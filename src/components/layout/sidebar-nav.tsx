@@ -1,0 +1,123 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  Wallet,
+  UserCog,
+  Landmark,
+  PiggyBank,
+  CalendarRange,
+  Coins,
+  Banknote,
+  CloudOff,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { UserRole } from "@/types/domain";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/sync", label: "Sync Queue", icon: CloudOff },
+    ],
+  },
+  {
+    label: "Business",
+    items: [
+      { href: "/clients", label: "Clients", icon: Users },
+      { href: "/contracts", label: "Contracts", icon: FileText },
+      { href: "/payments", label: "Payments", icon: Wallet },
+    ],
+  },
+  {
+    label: "Investors",
+    items: [
+      { href: "/investors", label: "Investors", icon: PiggyBank },
+      { href: "/phases", label: "Business Phases", icon: CalendarRange },
+      { href: "/distributions", label: "Distributions", icon: Coins },
+      { href: "/withdrawals", label: "Withdrawals", icon: Banknote },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [{ href: "/users", label: "Team", icon: UserCog, adminOnly: true }],
+  },
+];
+
+export function SidebarNav({ role }: { role: UserRole }) {
+  const pathname = usePathname();
+
+  return (
+    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+      {NAV_GROUPS.map((group) => {
+        const visibleItems = group.items.filter(
+          (item) => !item.adminOnly || role === "admin"
+        );
+        if (visibleItems.length === 0) return null;
+
+        return (
+          <div key={group.label}>
+            <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {group.label}
+            </p>
+            <div className="flex flex-col gap-1">
+              {visibleItems.map((item) => {
+                const isActive =
+                  pathname === item.href || pathname.startsWith(item.href + "/");
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-secondary text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function SidebarBrand() {
+  return (
+    <div className="flex items-center gap-2 px-4 py-5">
+      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <Landmark className="h-4 w-4" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold leading-none text-foreground">
+          Sitara Traders
+        </p>
+        <p className="text-xs text-muted-foreground">Installment Manager</p>
+      </div>
+    </div>
+  );
+}

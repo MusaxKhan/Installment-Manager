@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Sitara Traders — design tokens
+  -------------------------------
+  Direction: a disciplined ledger, not a SaaS dashboard. Deep navy
+  (#0F2A4A) as the anchor -- the color of a bank statement letterhead --
+  paired with a crisp paper-white surface and a single confident
+  accent blue for action. Status colors (overdue red, paid green,
+  partial amber) are kept slightly desaturated so they read as
+  financial signal, not alert-fatigue neon.
+
+  Type: Geist for UI text (already wired via next/font), tabular
+  numerals enabled globally so currency columns align like a real
+  ledger -- the one signature detail that makes the numbers feel
+  engineered rather than templated.
+*/
+
+:root {
+  --radius: 0.5rem;
+
+  /* Core surfaces */
+  --background: #f7f9fc;
+  --foreground: #0f2a4a;
+  --card: #ffffff;
+  --card-foreground: #0f2a4a;
+  --popover: #ffffff;
+  --popover-foreground: #0f2a4a;
+
+  /* Brand */
+  --primary: #0f2a4a;
+  --primary-foreground: #ffffff;
+  --secondary: #eef3fa;
+  --secondary-foreground: #0f2a4a;
+  --accent: #2563eb;
+  --accent-foreground: #ffffff;
+
+  --muted: #eef2f7;
+  --muted-foreground: #5b7090;
+
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+
+  --border: #dde6f0;
+  --input: #dde6f0;
+  --ring: #2563eb;
+
+  /* Financial status signal colors */
+  --status-active: #2563eb;
+  --status-active-bg: #eaf1fd;
+  --status-completed: #15803d;
+  --status-completed-bg: #eafaf0;
+  --status-overdue: #b42318;
+  --status-overdue-bg: #fdeeec;
+  --status-pending: #5b7090;
+  --status-pending-bg: #eef2f7;
+  --status-partial: #b45309;
+  --status-partial-bg: #fef6e7;
+
+  --chart-1: #2563eb;
+  --chart-2: #15803d;
+  --chart-3: #b45309;
+  --chart-4: #6d28d9;
+  --chart-5: #b42318;
+}
+
+.dark {
+  --background: #0a1a2e;
+  --foreground: #e8eef7;
+  --card: #0f2238;
+  --card-foreground: #e8eef7;
+  --popover: #0f2238;
+  --popover-foreground: #e8eef7;
+
+  --primary: #4d8eff;
+  --primary-foreground: #0a1a2e;
+  --secondary: #142b46;
+  --secondary-foreground: #e8eef7;
+  --accent: #4d8eff;
+  --accent-foreground: #0a1a2e;
+
+  --muted: #142b46;
+  --muted-foreground: #8fa6c4;
+
+  --destructive: #e25950;
+  --destructive-foreground: #0a1a2e;
+
+  --border: #1d3a5a;
+  --input: #1d3a5a;
+  --ring: #4d8eff;
+
+  --status-active: #4d8eff;
+  --status-active-bg: #122944;
+  --status-completed: #4ade80;
+  --status-completed-bg: #0f2a1c;
+  --status-overdue: #f87171;
+  --status-overdue-bg: #2c1412;
+  --status-pending: #8fa6c4;
+  --status-pending-bg: #142b46;
+  --status-partial: #fbbf24;
+  --status-partial-bg: #2c2110;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-active: var(--status-active);
+  --color-status-active-bg: var(--status-active-bg);
+  --color-status-completed: var(--status-completed);
+  --color-status-completed-bg: var(--status-completed-bg);
+  --color-status-overdue: var(--status-overdue);
+  --color-status-overdue-bg: var(--status-overdue-bg);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-bg: var(--status-pending-bg);
+  --color-status-partial: var(--status-partial);
+  --color-status-partial-bg: var(--status-partial-bg);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+  /* Ledger-style numerals: currency and counts align vertically */
+  .tabular-nums,
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+  Minimal animate-in/animate-out utilities for Radix overlays
+  (Dialog, Popover, Select, AlertDialog, DropdownMenu).
+  Hand-rolled instead of pulling in tw-animate-css, whose `@utility`
+  rules don't nest cleanly under Tailwind v4 in this build pipeline.
+*/
+@keyframes sitara-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sitara-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes sitara-zoom-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes sitara-zoom-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+}
+
+[data-state="open"].animate-in,
+[data-state="open"][class*="data-[state=open]:animate-in"] {
+  animation-duration: 150ms;
+  animation-timing-function: ease-out;
+}
+
+@layer utilities {
+  .animate-in {
+    animation-duration: 150ms;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  .animate-out {
+    animation-duration: 150ms;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  .fade-in-0 {
+    animation-name: sitara-fade-in;
+  }
+  .fade-out-0 {
+    animation-name: sitara-fade-out;
+  }
+  .zoom-in-95 {
+    animation-name: sitara-zoom-in;
+  }
+  .zoom-out-95 {
+    animation-name: sitara-zoom-out;
+  }
+}

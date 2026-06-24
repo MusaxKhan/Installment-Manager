@@ -1,0 +1,343 @@
+import { createClient } from "@/lib/supabase/server";
+import type { ContractRow } from "@/types/database";
+import {
+  mapClient,
+  mapContract,
+  mapInstallment,
+  mapPayment,
+} from "./mappers";
+import {
+  calculateContractFinancials,
+  calculateExpectedEndDate,
+  generateInstallmentSchedule,
+} from "@/lib/utils/calculations";
+import type {
+  Contract,
+  ContractWithClient,
+  ContractWithDetails,
+} from "@/types/domain";
+import type { ContractFormValues } from "@/lib/validations/contract";
+
+export class ContractServiceError extends Error {}
+
+async function getNextContractCode(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<string> {
+  const { data, error } = await supabase.rpc("next_contract_code");
+  if (error || !data) {
+    throw new ContractServiceError(
+      `Failed to generate contract code: ${error?.message ?? "unknown error"}`
+    );
+  }
+  return data as string;
+}
+
+export async function listContracts(params?: {
+  status?: ContractRow["status"];
+  search?: string;
+}): Promise<ContractWithClient[]> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("contracts")
+    .select("*, client:clients(id, client_code, name, phone)");
+
+  if (params?.status) {
+    query = query.eq("status", params.status);
+  }
+  if (params?.search && params.search.trim().length > 0) {
+    const term = params.search.trim();
+    query = query.or(`contract_code.ilike.%${term}%,product_name.ilike.%${term}%`);
+  }
+
+  query = query.order("created_at", { ascending: false });
+
+  const { data, error } = await query;
+  if (error) {
+    throw new ContractServiceError(
+      `Failed to list contracts: ${error.message}`
+    );
+  }
+
+  return (data ?? []).map((row) => ({
+    ...mapContract(row),
+    client: {
+      id: row.client.id,
+      clientCode: row.client.client_code,
+      name: row.client.name,
+      phone: row.client.phone,
+    },
+  }));
+}
+
+export async function getContractById(
+  id: number
+): Promise<ContractWithDetails | null> {
+  const supabase = await createClient();
+
+  const { data: contractRow, error: contractError } = await supabase
+    .from("contracts")
+    .select("*, client:clients(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (contractError) {
+    throw new ContractServiceError(
+      `Failed to fetch contract: ${contractError.message}`
+    );
+  }
+  if (!contractRow) return null;
+
+  const [{ data: installmentRows, error: instError }, { data: paymentRows, error: payError }] =
+    await Promise.all([
+      supabase
+        .from("installments")
+        .select("*")
+        .eq("contract_id", id)
+        .order("installment_number", { ascending: true }),
+      supabase
+        .from("payments")
+        .select("*")
+        .eq("contract_id", id)
+        .order("payment_date", { ascending: false }),
+    ]);
+
+  if (instError) {
+    throw new ContractServiceError(
+      `Failed to fetch installments: ${instError.message}`
+    );
+  }
+  if (payError) {
+    throw new ContractServiceError(
+      `Failed to fetch payments: ${payError.message}`
+    );
+  }
+
+  return {
+    ...mapContract(contractRow),
+    client: mapClient(contractRow.client),
+    installments: (installmentRows ?? []).map(mapInstallment),
+    payments: (paymentRows ?? []).map(mapPayment),
+  };
+}
+
+/**
+ * Creates a contract and its full installment schedule atomically.
+ * Calculation logic lives in lib/utils/calculations.ts — this function
+ * is only responsible for orchestration and persistence.
+ */
+export async function createContractRecord(
+  values: ContractFormValues
+): Promise<Contract> {
+  const supabase = await createClient();
+
+  // Validate the client up front with a friendly error, rather than
+  // letting an invalid/deleted client_id surface as a raw FK violation
+  // after we've already burned a contract code from the sequence.
+  const { data: clientRow, error: clientError } = await supabase
+    .from("clients")
+    .select("id, is_deleted")
+    .eq("id", values.clientId)
+    .maybeSingle();
+
+  if (clientError) {
+    throw new ContractServiceError(
+      `Failed to verify client: ${clientError.message}`
+    );
+  }
+  if (!clientRow) {
+    throw new ContractServiceError("Selected client doesn't exist.");
+  }
+  if (clientRow.is_deleted) {
+    throw new ContractServiceError(
+      "This client has been deleted and can't have new contracts created against them."
+    );
+  }
+
+  const contractCode = await getNextContractCode(supabase);
+
+  const financials = calculateContractFinancials(
+    values.purchasePrice,
+    values.profitPercent,
+    values.numberOfInstallments
+  );
+
+  const startDate = new Date(values.startDate);
+  const expectedEndDate = calculateExpectedEndDate(
+    startDate,
+    values.numberOfInstallments
+  );
+
+  const guarantor = values.hasGuarantor ? values.guarantor : undefined;
+
+  const { data: contractRow, error: contractError } = await supabase
+    .from("contracts")
+    .insert({
+      contract_code: contractCode,
+      client_id: values.clientId,
+      product_name: values.productName,
+      product_description: values.productDescription || null,
+      initiated_by: values.initiatedBy,
+      purchase_price: values.purchasePrice,
+      profit_percent: values.profitPercent,
+      profit_amount: financials.profitAmount,
+      total_price: financials.totalPrice,
+      number_of_installments: values.numberOfInstallments,
+      amount_per_installment: financials.amountPerInstallment,
+      remaining_balance: financials.totalPrice,
+      start_date: values.startDate,
+      expected_end_date: expectedEndDate,
+      status: "ACTIVE",
+      guarantor_name: guarantor?.name || null,
+      guarantor_phone: guarantor?.phone || null,
+      guarantor_address: guarantor?.address || null,
+      guarantor_cnic: guarantor?.cnic || null,
+    })
+    .select("*")
+    .single();
+
+  if (contractError) {
+    throw new ContractServiceError(
+      `Failed to create contract: ${contractError.message}`
+    );
+  }
+
+  const schedule = generateInstallmentSchedule(
+    startDate,
+    values.numberOfInstallments,
+    financials.amountPerInstallment,
+    financials.finalInstallmentAmount
+  );
+
+  const { error: installmentError } = await supabase
+    .from("installments")
+    .insert(
+      schedule.map((inst) => ({
+        contract_id: contractRow.id,
+        installment_number: inst.installmentNumber,
+        due_date: inst.dueDate,
+        installment_amount: inst.installmentAmount,
+        paid_amount: inst.paidAmount,
+        remaining_amount: inst.remainingAmount,
+        status: inst.status,
+      }))
+    );
+
+  if (installmentError) {
+    // Roll back the contract since the schedule failed to generate —
+    // we never want a contract with no installments.
+    await supabase.from("contracts").delete().eq("id", contractRow.id);
+    throw new ContractServiceError(
+      `Failed to generate installment schedule: ${installmentError.message}`
+    );
+  }
+
+  return mapContract(contractRow);
+}
+
+/**
+ * Recomputes and persists a contract's status + overdue_months based on
+ * installments. When a contract transitions to COMPLETED for the first
+ * time, this also attempts automatic profit distribution.
+ *
+ * Distribution failure (e.g. no active business phase configured yet)
+ * does NOT throw here — the payment that triggered completion must
+ * still succeed. The contract simply remains COMPLETED with
+ * profit_distributed = false until someone fixes the phase setup and
+ * manually triggers distribution from the contract page. This is
+ * surfaced back to the caller via the returned `distributionWarning`
+ * rather than silently swallowed.
+ */
+export async function recomputeContractStatus(
+  contractId: number
+): Promise<{ distributionWarning: string | null }> {
+  const supabase = await createClient();
+
+  const { data: installments, error } = await supabase
+    .from("installments")
+    .select("*")
+    .eq("contract_id", contractId);
+
+  if (error) {
+    throw new ContractServiceError(
+      `Failed to load installments for status recompute: ${error.message}`
+    );
+  }
+  if (!installments || installments.length === 0) {
+    return { distributionWarning: null };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const allPaid = installments.every((i) => i.status === "PAID");
+  const anyOverdue = installments.some(
+    (i) => i.status !== "PAID" && new Date(i.due_date) < today
+  );
+
+  let overdueMonths = 0;
+  if (anyOverdue) {
+    const oldestOverdue = installments
+      .filter((i) => i.status !== "PAID" && new Date(i.due_date) < today)
+      .sort(
+        (a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+      )[0];
+    if (oldestOverdue) {
+      const diffMs = today.getTime() - new Date(oldestOverdue.due_date).getTime();
+      overdueMonths = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30)));
+    }
+  }
+
+  const status = allPaid ? "COMPLETED" : anyOverdue ? "OVERDUE" : "ACTIVE";
+
+  // Fetch current status before overwriting, so we only attempt
+  // distribution on the ACTIVE/OVERDUE → COMPLETED transition, not on
+  // every recompute call after a contract is already completed.
+  const { data: beforeRow, error: beforeError } = await supabase
+    .from("contracts")
+    .select("status, profit_distributed")
+    .eq("id", contractId)
+    .single();
+
+  if (beforeError) {
+    throw new ContractServiceError(
+      `Failed to read current contract status: ${beforeError.message}`
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("contracts")
+    .update({ status, overdue_months: allPaid ? 0 : overdueMonths })
+    .eq("id", contractId);
+
+  if (updateError) {
+    throw new ContractServiceError(
+      `Failed to update contract status: ${updateError.message}`
+    );
+  }
+
+  const justCompleted =
+    status === "COMPLETED" &&
+    beforeRow.status !== "COMPLETED" &&
+    !beforeRow.profit_distributed;
+
+  if (!justCompleted) {
+    return { distributionWarning: null };
+  }
+
+  try {
+    const { distributeContractProfit } = await import(
+      "./profit-distribution-service"
+    );
+    await distributeContractProfit(contractId);
+    return { distributionWarning: null };
+  } catch (distributionError) {
+    const message =
+      distributionError instanceof Error
+        ? distributionError.message
+        : "Unknown error during profit distribution.";
+    return {
+      distributionWarning: `Contract completed, but profit could not be distributed automatically: ${message}`,
+    };
+  }
+}
