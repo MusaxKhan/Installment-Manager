@@ -26,6 +26,8 @@
 const CACHE_NAME = "sitara-shell-v1";
 
 const SHELL_ASSETS = [
+  "/",
+  "/dashboard",
   "/manifest.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
