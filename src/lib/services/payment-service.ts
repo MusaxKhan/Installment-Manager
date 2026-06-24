@@ -7,7 +7,7 @@ import type {
   PaymentFormValues,
   PaymentEditFormValues,
 } from "@/lib/validations/payment";
-
+import type { InstallmentStatus } from "@/types/database";
 export class PaymentServiceError extends Error {}
 
 /**
@@ -23,6 +23,15 @@ export class PaymentServiceError extends Error {}
  * a noted follow-up since correctness here is verified by the
  * allocation unit being a pure, already-tested function.
  */
+
+type WorkingInstallment = {
+  id: number;
+  installmentNumber: number;
+  installmentAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  status: InstallmentStatus;
+};
 export async function recordPayment(
   values: PaymentFormValues
 ): Promise<{ payment: Payment; distributionWarning: string | null }> {
@@ -253,6 +262,110 @@ export async function getPaymentWithEdits(
  * clerical errors (wrong amount typed) close to time of entry. The
  * audit trail preserves full transparency on what changed and why.
  */
+
+async function recalculateContractAllocations(
+  contractId: number
+): Promise<void> {
+  const supabase = await createClient();
+
+  const { data: contract, error: contractError } = await supabase
+    .from("contracts")
+    .select("id, total_price")
+    .eq("id", contractId)
+    .single();
+
+  if (contractError || !contract) {
+    throw new PaymentServiceError("Contract not found.");
+  }
+
+  const { data: installments, error: installmentError } = await supabase
+    .from("installments")
+    .select("*")
+    .eq("contract_id", contractId)
+    .order("installment_number");
+
+  if (installmentError) {
+    throw new PaymentServiceError(
+      `Failed to load installments: ${installmentError.message}`
+    );
+  }
+
+  const { data: payments, error: paymentError } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("contract_id", contractId)
+    .order("payment_date", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (paymentError) {
+    throw new PaymentServiceError(
+      `Failed to load payments: ${paymentError.message}`
+    );
+  }
+
+  const workingInstallments: WorkingInstallment[] =
+  (installments ?? []).map((i) => ({
+    id: i.id,
+    installmentNumber: i.installment_number,
+    installmentAmount: Number(i.installment_amount),
+    paidAmount: 0,
+    remainingAmount: Number(i.installment_amount),
+    status: "PENDING",
+  }));
+
+  let currentRemainingBalance = Number(contract.total_price);
+
+  for (const payment of payments ?? []) {
+    const outcome = allocatePayment(
+      Number(payment.amount_paid),
+      workingInstallments.filter((i) => i.remainingAmount > 0),
+      currentRemainingBalance
+    );
+
+    currentRemainingBalance =
+      outcome.newContractRemainingBalance;
+
+    for (const allocation of outcome.allocations) {
+      const inst = workingInstallments.find(
+        (i) => i.id === allocation.installmentId
+      );
+
+      if (!inst) continue;
+
+      inst.paidAmount = allocation.newPaidAmount;
+      inst.remainingAmount = allocation.newRemainingAmount;
+      inst.status = allocation.newStatus;
+    }
+
+    await supabase
+      .from("payments")
+      .update({
+        remaining_balance:
+          outcome.newContractRemainingBalance,
+      })
+      .eq("id", payment.id);
+  }
+
+  for (const inst of workingInstallments) {
+    await supabase
+      .from("installments")
+      .update({
+        paid_amount: inst.paidAmount,
+        remaining_amount: inst.remainingAmount,
+        status: inst.status,
+      })
+      .eq("id", inst.id);
+  }
+
+  await supabase
+    .from("contracts")
+    .update({
+      remaining_balance: currentRemainingBalance,
+    })
+    .eq("id", contractId);
+
+  await recomputeContractStatus(contractId);
+}
 export async function editPaymentAmount(
   values: PaymentEditFormValues,
   editedByName: string
@@ -302,4 +415,8 @@ export async function editPaymentAmount(
       `Audit log was written but payment update failed — please review payment #${values.paymentId} manually: ${updateError.message}`
     );
   }
+
+  await recalculateContractAllocations(
+    payment.contract_id
+  );
 }
