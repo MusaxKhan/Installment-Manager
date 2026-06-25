@@ -21,6 +21,7 @@ import { listPaymentEditsForContract } from "@/lib/services/payment-service";
 import { listDistributionsForContract } from "@/lib/services/profit-distribution-service";
 import { formatDate, formatPKR, formatPercent } from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
+import { Pencil } from "lucide-react";
 
 export default async function ContractDetailPage({
   params,
@@ -75,15 +76,24 @@ export default async function ContractDetailPage({
               · {contract.client.clientCode}
             </CardDescription>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <ContractStatusBadge status={contract.status} />
-            {contract.status === "OVERDUE" && (
-              <span className="text-xs font-medium text-status-overdue">
+          <div className="flex items-center gap-2">
+          <ContractStatusBadge status={contract.status} />
+
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/contracts/${contract.id}/edit`}>
+              <Pencil className="h-4 w-4" />
+              Edit
+            </Link>
+          </Button>
+        </div>
+          {contract.status === "OVERDUE" && (
+            <div className="px-6 pb-4">
+              <span className="text-sm font-medium text-status-overdue">
                 {contract.overdueMonths}{" "}
                 {contract.overdueMonths === 1 ? "month" : "months"} overdue
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">

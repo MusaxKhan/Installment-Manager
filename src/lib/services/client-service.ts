@@ -2,8 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import { mapClient, mapContract } from "./mappers";
 import type { Client, ClientWithContracts } from "@/types/domain";
 import type { ClientFormValues } from "@/lib/validations/client";
+import { normalize } from "path";
 
 export class ClientServiceError extends Error {}
+
+function normalizeNumber(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 
 /** Generates the next sequential client code via the DB sequence function */
 async function getNextClientCode(
@@ -29,20 +35,39 @@ export async function listClients(params?: {
     query = query.eq("is_deleted", false);
   }
 
-  if (params?.search && params.search.trim().length > 0) {
-    const term = params.search.trim();
-    query = query.or(
-      `name.ilike.%${term}%,cnic.ilike.%${term}%,phone.ilike.%${term}%,client_code.ilike.%${term}%`
-    );
-  }
+  // if (params?.search && params.search.trim().length > 0) {
+  //   const term = params.search.trim();
+  //   query = query.or(
+  //     `name.ilike.%${term}%,cnic.ilike.%${term}%,phone.ilike.%${term}%,client_code.ilike.%${term}%`
+  //   );
+  // }
 
   query = query.order("created_at", { ascending: false });
 
   const { data, error } = await query;
+
   if (error) {
     throw new ClientServiceError(`Failed to list clients: ${error.message}`);
   }
-  return (data ?? []).map(mapClient);
+
+  let clients = (data ?? []).map(mapClient);
+
+  if (params?.search?.trim()) {
+    const term = params.search.trim().toLowerCase();
+    const numericTerm = normalizeNumber(term);
+    clients = clients.filter((c) => {
+      return (
+        c.name.toLowerCase().includes(term) ||
+        c.clientCode.toLowerCase().includes(term) ||
+        (c.cnic ?? "").toLowerCase().includes(term) ||
+        (c.phone ?? "").toLowerCase().includes(term) ||
+        normalizeNumber(c.cnic ?? "").includes(numericTerm) ||
+        normalizeNumber(c.phone ?? "").includes(numericTerm)
+      );
+    });
+  }
+
+  return clients;
 }
 
 export async function getClientById(

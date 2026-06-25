@@ -22,6 +22,10 @@ import { useOnlineStatus } from "@/lib/offline/use-online-status";
 import { formatDate } from "@/lib/utils/format";
 import type { Client } from "@/types/domain";
 
+function normalizeNumber(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 export default function ClientsPage() {
   const { isOnline } = useOnlineStatus();
   const [search, setSearch] = React.useState("");
@@ -53,13 +57,18 @@ export default function ClientsPage() {
       offlineDb.clients
         .filter((c) => {
           if (c.isDeleted) return false;
-          if (!search.trim()) return true;
+
           const term = search.trim().toLowerCase();
+          if (!term) return true;
+
+          const numericTerm = normalizeNumber(term);
           return (
             c.name.toLowerCase().includes(term) ||
+            c.clientCode.toLowerCase().includes(term) ||
             (c.cnic ?? "").toLowerCase().includes(term) ||
             (c.phone ?? "").toLowerCase().includes(term) ||
-            c.clientCode.toLowerCase().includes(term)
+            normalizeNumber(c.cnic ?? "").includes(numericTerm) ||
+            normalizeNumber(c.phone ?? "").includes(numericTerm)
           );
         })
         .toArray(),

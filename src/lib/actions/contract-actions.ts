@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   createContractRecord,
+  updateContractRecord,
   ContractServiceError,
 } from "@/lib/services/contract-service";
 import { contractSchema } from "@/lib/validations/contract";
@@ -56,4 +57,62 @@ export async function createContractAction(
   revalidatePath("/contracts");
   revalidatePath(`/clients/${parsed.data.clientId}`);
   redirect(`/contracts/${newContractId}`);
+}
+
+export async function updateContractAction(
+  contractId: number,
+  formData: FormData
+): Promise<ActionResult> {
+  const hasGuarantor = formData.get("hasGuarantor") === "on";
+  const parsed = contractSchema.safeParse({
+    clientId: formData.get("clientId"),
+    productName: formData.get("productName"),
+    productDescription: formData.get("productDescription"),
+    initiatedBy: formData.get("initiatedBy"),
+    purchasePrice: formData.get("purchasePrice"),
+    profitPercent: formData.get("profitPercent"),
+    numberOfInstallments: formData.get("numberOfInstallments"),
+    startDate: formData.get("startDate"),
+    hasGuarantor,
+    guarantor: hasGuarantor
+      ? {
+          name: formData.get("guarantorName"),
+          phone: formData.get("guarantorPhone"),
+          address: formData.get("guarantorAddress"),
+          cnic: formData.get("guarantorCnic"),
+        }
+      : undefined,
+  });
+
+  if (!parsed.success) {
+    console.log(parsed.error.flatten());
+
+    return {
+      success: false,
+      error: JSON.stringify(parsed.error.flatten()),
+    };
+  }
+
+  try {
+    await updateContractRecord(
+      contractId,
+      parsed.data
+    );
+  } catch (err) {
+    if (err instanceof ContractServiceError) {
+      return {
+        success: false,
+        error: err.message,
+      };
+    }
+
+    throw err;
+  }
+
+  revalidatePath("/contracts");
+  revalidatePath(`/contracts/${contractId}`);
+  revalidatePath(`/contracts/${contractId}/edit`);
+  revalidatePath(`/clients/${parsed.data.clientId}`);
+
+  redirect(`/contracts/${contractId}`);
 }

@@ -20,6 +20,145 @@ import type { ContractFormValues } from "@/lib/validations/contract";
 
 export class ContractServiceError extends Error {}
 
+export async function updateContractRecord(
+  contractId: number,
+  values: ContractFormValues
+): Promise<void> {
+  const supabase = await createClient();
+
+  const contract = await getContractById(contractId);
+
+  if (!contract) {
+    throw new ContractServiceError("Contract not found.");
+  }
+
+  const hasPayments = contract.payments.length > 0;
+  if (
+    hasPayments &&
+    (
+      values.purchasePrice !== contract.purchasePrice ||
+      values.profitPercent !== contract.profitPercent ||
+      values.numberOfInstallments !== contract.numberOfInstallments ||
+      values.startDate !== contract.startDate
+    )
+  ) {
+    throw new ContractServiceError(
+      "Financial terms cannot be changed once payments exist."
+    );
+  }
+  const guarantor = values.hasGuarantor
+    ? values.guarantor
+    : undefined;
+
+  const updatePayload: Partial<ContractRow> = {
+    product_name: values.productName,
+    product_description: values.productDescription || null,
+    initiated_by: values.initiatedBy,
+
+    guarantor_name: guarantor?.name || null,
+    guarantor_phone: guarantor?.phone || null,
+    guarantor_address: guarantor?.address || null,
+    guarantor_cnic: guarantor?.cnic || null,
+  };
+
+  if (!hasPayments) {
+    const financials = calculateContractFinancials(
+      values.purchasePrice,
+      values.profitPercent,
+      values.numberOfInstallments
+    );
+
+    const startDate = new Date(values.startDate);
+
+    const expectedEndDate = calculateExpectedEndDate(
+      startDate,
+      values.numberOfInstallments
+    );
+
+    Object.assign(updatePayload, {
+      purchase_price: values.purchasePrice,
+      profit_percent: values.profitPercent,
+      profit_amount: financials.profitAmount,
+
+      total_price: financials.totalPrice,
+
+      number_of_installments:
+        values.numberOfInstallments,
+
+      amount_per_installment:
+        financials.amountPerInstallment,
+
+      remaining_balance:
+        financials.totalPrice,
+
+      start_date: values.startDate,
+
+      expected_end_date: expectedEndDate,
+    });
+
+    const { error: updateError } = await supabase
+      .from("contracts")
+      .update(updatePayload)
+      .eq("id", contractId);
+
+    if (updateError) {
+      throw new ContractServiceError(
+        `Failed to update contract: ${updateError.message}`
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("installments")
+      .delete()
+      .eq("contract_id", contractId);
+
+    if (deleteError) {
+      throw new ContractServiceError(
+        `Failed to remove installments: ${deleteError.message}`
+      );
+    }
+
+    const schedule = generateInstallmentSchedule(
+      startDate,
+      values.numberOfInstallments,
+      financials.amountPerInstallment,
+      financials.finalInstallmentAmount
+    );
+
+    const { error: insertError } = await supabase
+      .from("installments")
+      .insert(
+        schedule.map((inst) => ({
+          contract_id: contractId,
+          installment_number: inst.installmentNumber,
+          due_date: inst.dueDate,
+          installment_amount: inst.installmentAmount,
+          paid_amount: inst.paidAmount,
+          remaining_amount: inst.remainingAmount,
+          status: inst.status,
+        }))
+      );
+
+    if (insertError) {
+      throw new ContractServiceError(
+        `Failed to regenerate installment schedule: ${insertError.message}`
+      );
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("contracts")
+    .update(updatePayload)
+    .eq("id", contractId);
+
+  if (error) {
+    throw new ContractServiceError(
+      `Failed to update contract: ${error.message}`
+    );
+  }
+}
 async function getNextContractCode(
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string> {
@@ -121,6 +260,10 @@ export async function getContractById(
   };
 }
 
+// export async function updateContractRecord(
+//   contractId: number,
+//   values: ContractFormValues
+// )
 /**
  * Creates a contract and its full installment schedule atomically.
  * Calculation logic lives in lib/utils/calculations.ts — this function

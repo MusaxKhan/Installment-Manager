@@ -26,7 +26,17 @@ import { enqueueOperation } from "@/lib/offline/outbox";
 import { offlineDb } from "@/lib/offline/db";
 import { contractSchema } from "@/lib/validations/contract";
 import { toDateInputValue } from "@/lib/utils/format";
-
+import { updateContractAction } from "@/lib/actions/contract-actions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 interface ClientOption {
   id: number;
   label: string;
@@ -35,15 +45,42 @@ interface ClientOption {
 export function ContractForm({
   clients,
   defaultClientId,
+  mode = "create",
+  contractId,
+  hasPayments = false,
+  initialValues,
 }: {
   clients: ClientOption[];
   defaultClientId?: number;
+
+  mode?: "create" | "edit";
+  contractId?: number;
+  hasPayments?: boolean;
+
+  initialValues?: {
+    clientId: number;
+    productName: string;
+    productDescription?: string;
+    initiatedBy: string;
+    purchasePrice: number;
+    profitPercent: number;
+    numberOfInstallments: number;
+    startDate: string;
+    hasGuarantor: boolean;
+    guarantor?: {
+      name?: string | null;
+      phone?: string | null;
+      address?: string | null;
+      cnic?: string | null;
+    };
+  };
 }) {
   const router = useRouter();
   const { isOnline } = useOnlineStatus();
   const [isPending, setIsPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
+  const [showConfirm, setShowConfirm] = React.useState(false);
+  const formRef = React.useRef<HTMLFormElement>(null);
   // Offline: source the client picker from the local cache instead of
   // the server-rendered list (which may be stale or simply unavailable
   // if this page was opened fresh while offline via a cached shell).
@@ -59,23 +96,59 @@ export function ContractForm({
       }));
 
   const [clientId, setClientId] = React.useState<string>(
-    defaultClientId ? String(defaultClientId) : ""
+    initialValues?.clientId
+      ? String(initialValues.clientId)
+      : defaultClientId
+        ? String(defaultClientId)
+        : ""
   );
-  const [purchasePrice, setPurchasePrice] = React.useState<number>(0);
-  const [profitPercent, setProfitPercent] = React.useState<number>(0);
+  const [purchasePrice, setPurchasePrice] =
+    React.useState<number>(
+      initialValues?.purchasePrice ?? 0
+    );
+  const [profitPercent, setProfitPercent] =
+    React.useState<number>(
+      initialValues?.profitPercent ?? 0
+    );
   const [numberOfInstallments, setNumberOfInstallments] =
-    React.useState<number>(12);
-  const [hasGuarantor, setHasGuarantor] = React.useState(false);
+    React.useState<number>(
+      initialValues?.numberOfInstallments ?? 12
+    );
+  const [hasGuarantor, setHasGuarantor] =
+    React.useState(
+      initialValues?.hasGuarantor ?? false
+    );
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    function handleSubmit(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
-    setError(null);
 
-    const formData = new FormData(e.currentTarget);
+    if (mode === "edit") {
+      const formData = new FormData(e.currentTarget);
+      submitContract(formData);
+      return;
+    }
+
+    setShowConfirm(true);
+  }
+  async function submitContract(
+    formData: FormData
+  ) {
+    setError(null);
 
     if (isOnline) {
       setIsPending(true);
-      const result = await createContractAction(null, formData);
+      const result =
+        mode === "edit"
+          ? await updateContractAction(
+              contractId!,
+              formData
+            )
+          : await createContractAction(
+              null,
+              formData
+            );
       setIsPending(false);
       if (result && !result.success) {
         setError(result.error ?? "Something went wrong.");
@@ -143,7 +216,11 @@ export function ContractForm({
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <form onSubmit={handleSubmit} className="space-y-6 lg:col-span-2">
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        className="space-y-6 lg:col-span-2"
+      >
         {!isOnline && (
           <Badge variant="overdue" className="flex w-fit items-center gap-1.5">
             <WifiOff className="h-3.5 w-3.5" />
@@ -155,7 +232,12 @@ export function ContractForm({
 
         <div className="space-y-1.5">
           <Label htmlFor="client-select">Client</Label>
-          <Select value={clientId} onValueChange={setClientId} required>
+          <Select
+            value={clientId}
+            onValueChange={setClientId}
+            required
+            disabled={mode === "edit"}
+          >
             <SelectTrigger id="client-select">
               <SelectValue placeholder="Select a client" />
             </SelectTrigger>
@@ -179,11 +261,21 @@ export function ContractForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="productName">Product Name</Label>
-            <Input id="productName" name="productName" required placeholder="e.g. Honda CD70" />
+            <Input
+              id="productName"
+              name="productName"
+              required
+              defaultValue={initialValues?.productName}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="initiatedBy">Initiated By</Label>
-            <Input id="initiatedBy" name="initiatedBy" required placeholder="Staff member name" />
+            <Input
+              id="initiatedBy"
+              name="initiatedBy"
+              required
+              defaultValue={initialValues?.initiatedBy}
+            />
           </div>
         </div>
 
@@ -192,7 +284,9 @@ export function ContractForm({
           <Textarea
             id="productDescription"
             name="productDescription"
-            placeholder="Model, color, condition, anything worth noting"
+            defaultValue={
+              initialValues?.productDescription
+            }
           />
         </div>
 
@@ -210,6 +304,7 @@ export function ContractForm({
               required
               value={purchasePrice || ""}
               onChange={(e) => setPurchasePrice(Number(e.target.value))}
+              disabled={hasPayments}
             />
           </div>
           <div className="space-y-1.5">
@@ -223,6 +318,7 @@ export function ContractForm({
               required
               value={profitPercent || ""}
               onChange={(e) => setProfitPercent(Number(e.target.value))}
+              disabled={hasPayments}
             />
           </div>
           <div className="space-y-1.5">
@@ -236,6 +332,7 @@ export function ContractForm({
               required
               value={numberOfInstallments || ""}
               onChange={(e) => setNumberOfInstallments(Number(e.target.value))}
+              disabled={hasPayments}
             />
           </div>
         </div>
@@ -247,7 +344,11 @@ export function ContractForm({
             name="startDate"
             type="date"
             required
-            defaultValue={toDateInputValue(new Date())}
+            defaultValue={
+              initialValues?.startDate
+                ? initialValues.startDate
+                : toDateInputValue(new Date())
+            }
             className="max-w-xs"
           />
         </div>
@@ -270,19 +371,19 @@ export function ContractForm({
           <div className="grid grid-cols-1 gap-4 rounded-md border border-border bg-muted/30 p-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="guarantorName">Guarantor Name</Label>
-              <Input id="guarantorName" name="guarantorName" />
+              <Input id="guarantorName" name="guarantorName" defaultValue={ initialValues?.guarantor?.name ?? "" } />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="guarantorPhone">Guarantor Phone</Label>
-              <Input id="guarantorPhone" name="guarantorPhone" />
+              <Input id="guarantorPhone" name="guarantorPhone" defaultValue={ initialValues?.guarantor?.phone ?? "" } />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="guarantorCnic">Guarantor CNIC</Label>
-              <Input id="guarantorCnic" name="guarantorCnic" placeholder="12345-1234567-1" />
+              <Input id="guarantorCnic" name="guarantorCnic" defaultValue={ initialValues?.guarantor?.cnic ?? "12345-1234567-1" } />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="guarantorAddress">Guarantor Address</Label>
-              <Input id="guarantorAddress" name="guarantorAddress" />
+              <Input id="guarantorAddress" name="guarantorAddress" defaultValue={ initialValues?.guarantor?.address ?? "" } />
             </div>
           </div>
         )}
@@ -300,7 +401,9 @@ export function ContractForm({
                 <Loader2 className="h-4 w-4 animate-spin" /> Creating contract...
               </>
             ) : (
-              "Create Contract"
+              mode === "edit"
+                ? "Update Contract"
+                : "Create Contract"
             )}
           </Button>
         </div>
@@ -313,6 +416,65 @@ export function ContractForm({
           numberOfInstallments={numberOfInstallments}
         />
       </div>
+
+      <AlertDialog
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Create Contract?
+            </AlertDialogTitle>
+
+            <AlertDialogDescription asChild>
+              <div>
+                <p>Please review carefully before continuing.</p>
+
+                <p className="mt-4">
+                  The following fields can only be changed until the first payment is recorded:
+                </p>
+
+                <ul className="mt-2 list-disc pl-5">
+                  <li>Purchase Price</li>
+                  <li>Profit Percentage</li>
+                  <li>Number of Installments</li>
+                  <li>Start Date</li>
+                  <li>Initiated By</li>
+                </ul>
+
+                <p className="mt-4">
+                  After any payment is recorded, the financial structure of the contract becomes locked.
+                </p>
+
+                <p className="mt-4">
+                  Product details and guarantor information can still be edited later.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              Go Back
+            </AlertDialogCancel>
+
+            <AlertDialogAction
+              onClick={async () => {
+                if (!formRef.current) return;
+
+                const formData = new FormData(
+                  formRef.current
+                );
+
+                await submitContract(formData);
+              }}
+            >
+              Create Contract
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
