@@ -115,13 +115,26 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
-        return fetch(request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        });
+        return fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return response;
+          })
+          .catch(() => {
+            // Offline and this exact chunk was never cached (e.g. the
+            // build changed since this device last cached the shell).
+            // There's nothing useful to return for a JS chunk — but we
+            // must resolve, not reject, or the browser surfaces an
+            // unhandled rejection and the page's script loading breaks
+            // instead of just that one feature being unavailable.
+            return new Response(
+              "/* offline: this build asset was not cached */",
+              { status: 503, statusText: "Offline", headers: { "Content-Type": "text/javascript" } }
+            );
+          });
       })
     );
     return;
@@ -141,6 +154,12 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(request))
+      .catch(() =>
+        caches.match(request).then(
+          (cached) =>
+            cached ||
+            new Response(null, { status: 504, statusText: "Offline — not cached" })
+        )
+      )
   );
 });
