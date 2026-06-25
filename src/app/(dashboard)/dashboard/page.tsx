@@ -26,12 +26,21 @@ import { getDashboardStats } from "@/lib/services/dashboard-service";
 import { listContracts } from "@/lib/services/contract-service";
 import { getActiveBusinessPhase } from "@/lib/services/business-phase-service";
 import { formatPKR, formatDate } from "@/lib/utils/format";
+import { Download } from "lucide-react";
+import { ExportDialog } from "@/components/export/export-dialog";
+import { listBusinessPhases } from "@/lib/services/business-phase-service";
 
 export default async function DashboardPage() {
-  const [stats, overdueContracts, activePhase] = await Promise.all([
+  const [
+    stats,
+    overdueContracts,
+    activePhase,
+    phases,
+  ] = await Promise.all([
     getDashboardStats(),
     listContracts({ status: "OVERDUE" }),
     getActiveBusinessPhase(),
+    listBusinessPhases(),
   ]);
 
   // Quick mathematical metrics for modern UI highlights
@@ -54,15 +63,22 @@ export default async function DashboardPage() {
         </div>
         
         {/* Dynamic Context Tag */}
-        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/60 rounded-xl p-1.5 pr-3 self-start md:self-center">
+        <div className="flex items-center gap-3 self-start md:self-center">
+        {/* Export Button */}
+        <ExportDialog phases={phases} />
+
+        {/* Active Phase Badge */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/60 rounded-xl p-1.5 pr-3">
           <div className="bg-white text-slate-700 p-1.5 rounded-lg shadow-sm text-xs font-bold flex items-center gap-1">
             <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
             Active Phase:
           </div>
+
           <span className="text-xs font-black text-slate-800">
             {activePhase ? activePhase.phaseName : "None Configured"}
           </span>
         </div>
+      </div>
       </div>
 
       {/* Warning Notification Banner */}
@@ -98,7 +114,7 @@ export default async function DashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <StatCard label="Active Portfolio Contracts" value={String(stats.totalActiveContracts)} icon={FileText} variant="blue" />
               <StatCard label="Total Registered Clients" value={String(stats.totalClients)} icon={Users} variant="cyan" />
-              <StatCard label="Outstanding Portfolio Debt" value={formatPKR(stats.totalOutstandingAmount)} icon={Wallet} hint="Across active & overdue items" variant="indigo" />
+              <StatCard label="Outstanding Amount" value={formatPKR(stats.totalOutstandingAmount)} icon={Wallet} hint="Across active & overdue items" variant="indigo" />
               <StatCard label="Critical Overdue Contracts" value={String(stats.totalOverdueContracts)} icon={AlertTriangle} variant="rose" />
             </div>
           </div>
