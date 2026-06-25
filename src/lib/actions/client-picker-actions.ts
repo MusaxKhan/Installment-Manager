@@ -9,3 +9,8 @@ export async function getClientsForPicker() {
     label: `${c.clientCode} — ${c.name}`,
   }));
 }
+
+/** Full client list for the clients page table — used by the online path */
+export async function getClientsList(search?: string) {
+  return listClients({ search });
+}

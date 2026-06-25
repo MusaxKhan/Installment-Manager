@@ -1,7 +1,13 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
-import { Plus, FileText } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Plus, FileText, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -12,9 +18,12 @@ import {
 } from "@/components/ui/table";
 import { ContractStatusBadge } from "@/components/shared/status-badge";
 import { cn } from "@/lib/utils";
-import { listContracts } from "@/lib/services/contract-service";
+import { getContractsList } from "@/lib/actions/contract-list-actions";
+import { offlineDb } from "@/lib/offline/db";
+import { useOnlineStatus } from "@/lib/offline/use-online-status";
 import { formatDate, formatPKR } from "@/lib/utils/format";
 import type { ContractStatus } from "@/types/domain";
+import type { ContractWithClient } from "@/types/domain";
 
 const TABS: { label: string; value: ContractStatus | undefined }[] = [
   { label: "All", value: undefined },
@@ -23,18 +32,82 @@ const TABS: { label: string; value: ContractStatus | undefined }[] = [
   { label: "Completed", value: "COMPLETED" },
 ];
 
-export default async function ContractsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ status?: string }>;
-}) {
-  const { status } = await searchParams;
+interface ContractRow {
+  id: number;
+  contractCode: string;
+  clientId: number;
+  clientName: string;
+  productName: string;
+  totalPrice: number;
+  remainingBalance: number;
+  status: ContractStatus;
+  startDate: string;
+}
+
+export default function ContractsPage() {
+  const searchParams = useSearchParams();
+  const status = searchParams.get("status");
   const validStatus =
     status === "ACTIVE" || status === "OVERDUE" || status === "COMPLETED"
       ? status
       : undefined;
 
-  const contracts = await listContracts({ status: validStatus });
+  const { isOnline } = useOnlineStatus();
+  const [onlineContracts, setOnlineContracts] =
+    React.useState<ContractWithClient[] | null>(null);
+  const [isLoadingOnline, setIsLoadingOnline] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isOnline) return;
+    let cancelled = false;
+    setIsLoadingOnline(true);
+    getContractsList(validStatus)
+      .then((data) => {
+        if (!cancelled) setOnlineContracts(data);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingOnline(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOnline, validStatus]);
+
+  const cachedContracts = useLiveQuery(
+    () =>
+      offlineDb.contracts
+        .filter((c) => !validStatus || c.status === validStatus)
+        .toArray(),
+    [validStatus]
+  );
+
+  const isLoading = isOnline
+    ? isLoadingOnline && onlineContracts === null
+    : cachedContracts === undefined;
+
+  const rows: ContractRow[] = isOnline
+    ? (onlineContracts ?? []).map((c) => ({
+        id: c.id,
+        contractCode: c.contractCode,
+        clientId: c.client.id,
+        clientName: c.client.name,
+        productName: c.productName,
+        totalPrice: c.totalPrice,
+        remainingBalance: c.remainingBalance,
+        status: c.status,
+        startDate: c.startDate,
+      }))
+    : (cachedContracts ?? []).map((c) => ({
+        id: c.id,
+        contractCode: c.contractCode,
+        clientId: c.clientId,
+        clientName: c.clientName,
+        productName: c.productName,
+        totalPrice: c.totalPrice,
+        remainingBalance: c.remainingBalance,
+        status: c.status,
+        startDate: c.startDate,
+      }));
 
   return (
     <div className="space-y-6">
@@ -42,7 +115,7 @@ export default async function ContractsPage({
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Contracts</h1>
           <p className="text-sm text-muted-foreground">
-            {contracts.length} {contracts.length === 1 ? "contract" : "contracts"}
+            {rows.length} {rows.length === 1 ? "contract" : "contracts"}
           </p>
         </div>
         <Button asChild>
@@ -52,6 +125,13 @@ export default async function ContractsPage({
           </Link>
         </Button>
       </div>
+
+      {!isOnline && (
+        <Badge variant="overdue" className="flex w-fit items-center gap-1.5">
+          <WifiOff className="h-3.5 w-3.5" />
+          Offline — showing cached contracts (most recent 500)
+        </Badge>
+      )}
 
       <div className="flex gap-1 rounded-md bg-muted p-1 w-fit">
         {TABS.map((tab) => (
@@ -72,7 +152,11 @@ export default async function ContractsPage({
 
       <Card>
         <CardContent className="p-0">
-          {contracts.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
               <FileText className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-medium text-foreground">
@@ -93,7 +177,7 @@ export default async function ContractsPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contracts.map((contract) => (
+                {rows.map((contract) => (
                   <TableRow
                     key={contract.id}
                     className={cn(
@@ -109,8 +193,11 @@ export default async function ContractsPage({
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/clients/${contract.client.id}`} className="hover:underline">
-                        {contract.client.name}
+                      <Link
+                        href={`/clients/${contract.clientId}`}
+                        className="hover:underline"
+                      >
+                        {contract.clientName}
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground">

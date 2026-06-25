@@ -1,10 +1,12 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
-import { Plus, Users as UsersIcon } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Plus, Users as UsersIcon, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -14,16 +16,74 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { listClients } from "@/lib/services/client-service";
+import { getClientsList } from "@/lib/actions/client-picker-actions";
+import { offlineDb } from "@/lib/offline/db";
+import { useOnlineStatus } from "@/lib/offline/use-online-status";
 import { formatDate } from "@/lib/utils/format";
+import type { Client } from "@/types/domain";
 
-export default async function ClientsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q } = await searchParams;
-  const clients = await listClients({ search: q });
+export default function ClientsPage() {
+  const { isOnline } = useOnlineStatus();
+  const [search, setSearch] = React.useState("");
+  const [onlineClients, setOnlineClients] = React.useState<Client[] | null>(null);
+  const [isLoadingOnline, setIsLoadingOnline] = React.useState(false);
+
+  // Online path: fetch fresh from the server, same as before.
+  React.useEffect(() => {
+    if (!isOnline) return;
+    let cancelled = false;
+    setIsLoadingOnline(true);
+    getClientsList(search)
+      .then((data) => {
+        if (!cancelled) setOnlineClients(data);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingOnline(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOnline, search]);
+
+  // Offline path: read straight from the Dexie cache. useLiveQuery keeps
+  // this reactive — if the cache refreshes in the background once
+  // connectivity returns, this list updates on its own.
+  const cachedClients = useLiveQuery(
+    () =>
+      offlineDb.clients
+        .filter((c) => {
+          if (c.isDeleted) return false;
+          if (!search.trim()) return true;
+          const term = search.trim().toLowerCase();
+          return (
+            c.name.toLowerCase().includes(term) ||
+            (c.cnic ?? "").toLowerCase().includes(term) ||
+            (c.phone ?? "").toLowerCase().includes(term) ||
+            c.clientCode.toLowerCase().includes(term)
+          );
+        })
+        .toArray(),
+    [search]
+  );
+
+  const clients = isOnline ? onlineClients : cachedClients;
+  const isLoading = isOnline ? isLoadingOnline && onlineClients === null : clients === undefined;
+
+  function hasCreatedAt(c: Client | { updatedAt: string }): c is Client {
+    return "createdAt" in c;
+  }
+
+  // Normalize both shapes (server Client has createdAt, cached CachedClient
+  // only has updatedAt) into one display-safe shape up front, rather than
+  // narrowing inline in the JSX below.
+  const rows = (clients ?? []).map((c) => ({
+    id: c.id,
+    clientCode: c.clientCode,
+    name: c.name,
+    cnic: c.cnic,
+    phone: c.phone,
+    dateLabel: hasCreatedAt(c) ? c.createdAt : c.updatedAt,
+  }));
 
   return (
     <div className="space-y-6">
@@ -31,8 +91,8 @@ export default async function ClientsPage({
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Clients</h1>
           <p className="text-sm text-muted-foreground">
-            {clients.length} {clients.length === 1 ? "client" : "clients"} on
-            record
+            {clients ? rows.length : "—"}{" "}
+            {rows.length === 1 ? "client" : "clients"} on record
           </p>
         </div>
         <Button asChild>
@@ -43,23 +103,33 @@ export default async function ClientsPage({
         </Button>
       </div>
 
-      <form className="max-w-sm">
-        <Input
-          name="q"
-          defaultValue={q}
-          placeholder="Search by name, CNIC, phone, or code..."
-        />
-      </form>
+      {!isOnline && (
+        <Badge variant="overdue" className="flex w-fit items-center gap-1.5">
+          <WifiOff className="h-3.5 w-3.5" />
+          Offline — showing cached clients (most recent 500)
+        </Badge>
+      )}
+
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by name, CNIC, phone, or code..."
+        className="max-w-sm"
+      />
 
       <Card>
         <CardContent className="p-0">
-          {clients.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
               <UsersIcon className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-medium text-foreground">
-                {q ? "No clients match your search." : "No clients yet."}
+                {search ? "No clients match your search." : "No clients yet."}
               </p>
-              {!q && (
+              {!search && isOnline && (
                 <Button asChild size="sm" variant="outline" className="mt-2">
                   <Link href="/clients/new">Add your first client</Link>
                 </Button>
@@ -77,7 +147,7 @@ export default async function ClientsPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clients.map((client) => (
+                {rows.map((client) => (
                   <TableRow key={client.id} className="cursor-pointer">
                     <TableCell>
                       <Link
@@ -99,7 +169,7 @@ export default async function ClientsPage({
                       {client.phone || "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {formatDate(client.createdAt)}
+                      {formatDate(client.dateLabel)}
                     </TableCell>
                   </TableRow>
                 ))}
