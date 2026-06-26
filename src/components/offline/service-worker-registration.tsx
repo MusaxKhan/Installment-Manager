@@ -2,13 +2,8 @@
 
 import { useEffect } from "react";
 import { toast } from "sonner";
-
-/**
- * The pages this app can meaningfully render offline (see sw.js for the
- * full reasoning). Kept in sync with SHELL_ASSETS in public/sw.js —
- * if you add another offline-capable page there, add it here too.
- */
-const OFFLINE_CAPABLE_PAGES = ["/dashboard", "/clients", "/contracts"];
+import { OFFLINE_CAPABLE_STATIC_ROUTES } from "@/lib/offline/offline-routes";
+import { offlineDb } from "@/lib/offline/db";
 
 /**
  * Fetches a page's real HTML and pulls out every same-origin
@@ -23,9 +18,9 @@ const OFFLINE_CAPABLE_PAGES = ["/dashboard", "/clients", "/contracts"];
  * only reliable, always-available source of truth for "what does this
  * exact build need to run this route."
  */
-async function getScriptUrlsForPage(path: string): Promise<string[]> {
+async function warmPage(path: string): Promise<void> {
   const response = await fetch(path, { cache: "no-store" });
-  if (!response.ok) return [];
+  if (!response.ok) return;
 
   const html = await response.text();
   const urls = new Set<string>();
@@ -38,7 +33,10 @@ async function getScriptUrlsForPage(path: string): Promise<string[]> {
       urls.add(src);
     }
   }
-  return Array.from(urls);
+
+  await Promise.allSettled(
+    Array.from(urls).map((url) => fetch(url, { cache: "no-store" }))
+  );
 }
 
 /**
@@ -46,13 +44,23 @@ async function getScriptUrlsForPage(path: string): Promise<string[]> {
  * layout alongside OfflineSyncProvider. Safe to call repeatedly —
  * the browser no-ops if already registered with the same script.
  *
- * After activation, explicitly fetches each offline-capable page AND
- * every JS chunk it references, so the static-asset cache-first
- * handler in sw.js has actually stored them before anyone goes
- * offline. Without this warm-up, a person who deploys a new build and
- * goes offline before ever opening (say) /clients on that exact build
- * hits a cache miss + network failure for its chunk — that's the
- * ChunkLoadError this exists to prevent.
+ * After activation, explicitly fetches every statically offline-capable
+ * page (OFFLINE_CAPABLE_STATIC_ROUTES) AND every JS chunk each one
+ * references, so the static-asset cache-first handler in sw.js has
+ * actually stored them before anyone goes offline. Without this
+ * warm-up, a person who deploys a new build and goes offline before
+ * ever opening (say) /clients/new on that exact build hits a cache
+ * miss + network failure for its chunk.
+ *
+ * It also separately warms the detail page for every contract
+ * currently in the Dexie cache. /contracts/[id] is a dynamic route —
+ * it can't be listed in OFFLINE_CAPABLE_STATIC_ROUTES because there's
+ * no fixed set of URLs to precache. Instead, since the Dexie cache
+ * already tracks "which contracts has this person actually worked
+ * with recently," warming exactly those contract pages means Record
+ * Payment stays reachable offline for any contract that shows up in
+ * the offline contracts list — which is the only place a person could
+ * navigate to one from while offline anyway.
  */
 export function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -68,21 +76,40 @@ export function ServiceWorkerRegistration() {
     }
 
     async function warmShellCache() {
-      for (const path of OFFLINE_CAPABLE_PAGES) {
+      for (const path of OFFLINE_CAPABLE_STATIC_ROUTES) {
         try {
-          const scriptUrls = await getScriptUrlsForPage(path);
-          // Fire these through fetch() so the service worker's own
-          // fetch handler intercepts and caches them as a side effect
-          // — same mechanism as a real page load, just without
-          // rendering anything.
-          await Promise.allSettled(
-            scriptUrls.map((url) => fetch(url, { cache: "no-store" }))
-          );
+          await warmPage(path);
         } catch {
           // Best-effort warm-up — a failure here just means that page
           // falls back to the generic /dashboard shell if opened cold
           // offline later, not a broken app.
         }
+      }
+
+      try {
+        const cachedContracts = await offlineDb.contracts.toArray();
+        // Cap how many we warm in one pass — a shop with a large
+        // contract history shouldn't make every reconnect fire off
+        // hundreds of fetches. Most recently updated first, since
+        // those are the ones most likely to be opened next.
+        const toWarm = cachedContracts
+          .filter((c) => c.id > 0) // skip any optimistic/pending negative-id rows
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          )
+          .slice(0, 100);
+
+        for (const contract of toWarm) {
+          try {
+            await warmPage(`/contracts/${contract.id}`);
+          } catch {
+            // Same best-effort reasoning as above, per-contract.
+          }
+        }
+      } catch {
+        // Dexie not ready yet or otherwise unavailable — non-fatal,
+        // the static routes above already warmed successfully.
       }
     }
 

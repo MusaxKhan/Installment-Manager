@@ -162,7 +162,8 @@ src/
 │       ├── use-online-status.ts   # real connectivity check, not just navigator.onLine
 │       ├── use-offline-sync.ts    # orchestration hook (auto-sync, periodic refresh)
 │       ├── offline-sync-context.tsx  # shares one sync-state instance app-wide
-│       └── guards.ts              # registry of operations that require a live connection
+│       ├── guards.ts              # registry of operations that require a live connection
+│       └── offline-routes.ts      # shared source of truth for offline-capable static routes
 ├── types/
 └── middleware.ts
 
@@ -251,11 +252,45 @@ into the local queue instead of over the network. Money-critical actions
 (Distribute Profit, Record Withdrawal, Invite Partner, etc.) grey out
 with a tooltip explaining they need a connection.
 
+**Which pages actually work cold-offline, and how:**
+
+- **`/dashboard`, `/clients`, `/clients/new`, `/contracts`, `/contracts/new`**
+  are guaranteed to open offline from a completely cold start (e.g. opening
+  the installed app on a phone that's been in airplane mode since before
+  launch), because the service worker (`public/sw.js`) precaches their
+  HTML shell and a client-side warm-up
+  (`service-worker-registration.tsx`) explicitly fetches and caches each
+  one's real JS chunks right after the service worker activates. `/clients`
+  and `/contracts` are also fully *reactive* offline — they're Client
+  Components that read live from the Dexie cache via `useLiveQuery`, so
+  the list updates immediately as the sync queue drains once you're back
+  online, with no page reload needed.
+- **`/contracts/[id]`** (an individual contract's detail page) is
+  opportunistically cached: if you've opened that specific contract at
+  least once while online, its page (and the JS it needs) gets cached
+  automatically, and the warm-up additionally pre-warms the 100
+  most-recently-updated contracts in your Dexie cache right after every
+  reconnect — so in practice, most contracts you've worked with recently
+  open fine offline from a cold start too. **Important caveat:** unlike
+  `/clients`/`/contracts`, this page is server-rendered, so the balance/
+  installment/payment numbers shown are frozen at whatever they were the
+  last time that exact page was successfully loaded online — they do
+  *not* live-update from Dexie the way the list pages do. The amber
+  "payments queued" banner on that page exists specifically to flag this:
+  it tells you the displayed balance hasn't accounted for anything queued
+  since. The **Record Payment** button itself still works correctly
+  offline regardless (it's a small Client Component that queues
+  independently of whether the page around it is stale).
+- **`/users`, `/investors`, `/phases`, `/payments`, `/distributions`,
+  `/withdrawals`** have no offline path by design — they either need a
+  live connection for what they do (inviting someone, anything touching
+  profit-split math) or just haven't been built with a Dexie-backed view
+  yet. Opening one offline falls back to the `/dashboard` shell rather
+  than a browser error, but won't show that page's actual content.
+
 **While offline:** the **Sync Queue** page (`/sync`, also linked from the
 top-bar badge) lists everything waiting to go out, oldest first, with
-its type and queued time. The contract detail page shows any payments
-queued specifically against that contract in an amber banner, so it's
-clear the balance shown hasn't accounted for them yet.
+its type and queued time.
 
 **Coming back online:** sync starts automatically — no button to press.
 A toast confirms how many changes synced; anything that fails (e.g. a
@@ -271,6 +306,19 @@ is a "recent + active" cache (most recent 500 clients/contracts, most
 recent 1000 payments) — intentionally not a full historical replica,
 since that's what a 3-person shop's *working set* actually looks like,
 not its entire multi-year archive.
+
+**Why the status filter on `/contracts` is plain client state, not a URL
+query param:** it originally was `?status=ACTIVE` etc., which seems
+harmless but isn't — the service worker caches by exact URL, and only
+the bare `/contracts` was ever in the precache/warm-up list. Clicking a
+status tab offline navigated to a URL that was never cached, which
+silently failed and fell back to the dashboard shell (it looked like "the
+filter shows nothing," but the real cause was a failed navigation, not a
+filtering bug). Making the filter pure in-memory state means clicking a
+tab never triggers a new page load at all — online or offline, it's the
+same page, just rendering a different subset of whatever's already loaded.
+
+
 
 ---
 
@@ -301,6 +349,10 @@ not its entire multi-year archive.
 
 ### Phase 3 — Offline & PWA
 - Dexie local cache (clients, contracts, installments, payments) + outbox queue
+- `/clients` and `/contracts` are reactive offline list views — Client
+  Components reading live from Dexie via `useLiveQuery`, not frozen
+  server-rendered snapshots, so they update immediately as the sync
+  queue drains
 - Online-capable forms (client, contract, payment) detect connectivity and
   branch between direct Server Action submission and local queueing
 - Server-side sync endpoint (`/api/sync`) replays queued writes through the
@@ -313,6 +365,14 @@ not its entire multi-year archive.
 - Sync Queue page: see pending/syncing/failed operations, retry or discard
 - Real connectivity detection (verifies via an actual fetch, not just
   `navigator.onLine`, and re-checks every 30s)
+- Cold-start offline page loading: a client-side warm-up
+  (`service-worker-registration.tsx`) parses each offline-capable page's
+  real HTML for its current build's JS chunk URLs and explicitly
+  fetches them right after the service worker activates — necessary
+  because Next.js chunk filenames are content-hashed per build and
+  can't be hardcoded ahead of time. The same mechanism additionally
+  pre-warms the 100 most-recently-updated contract detail pages from
+  the Dexie cache on every reconnect.
 - Installable PWA: manifest with real generated icons (192/512/maskable/
   apple-touch), hand-written service worker caching the app shell only
   (never API/data — that risk is explained above), custom install prompt
@@ -345,6 +405,17 @@ tradeoffs, not missing features:
   and want, say, offline investor creation later, the same temp-ID
   pattern in `sync-engine.ts` extends to that case — it's not a rewrite,
   just adding another branch.
+- **`/contracts/[id]` is read-stale offline.** Unlike `/clients` and
+  `/contracts`, the contract detail page is server-rendered, not a
+  Dexie-backed Client Component — so when served from the offline cache,
+  the balance/installment/payment numbers shown are frozen at whatever
+  they were the last time that exact page loaded online. Recording a
+  payment from that stale page still works correctly (the dialog queues
+  independently), and the amber "payments queued" banner exists
+  specifically to flag that the displayed numbers haven't caught up yet
+  — but turning this page into a fully reactive Dexie-backed view, the
+  same way the list pages work now, is a real follow-up if that
+  staleness ever causes confusion in practice.
 
 ---
 

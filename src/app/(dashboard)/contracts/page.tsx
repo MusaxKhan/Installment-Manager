@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Plus, FileText, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,12 +44,18 @@ interface ContractRow {
 }
 
 export default function ContractsPage() {
-  const searchParams = useSearchParams();
-  const status = searchParams.get("status");
-  const validStatus =
-    status === "ACTIVE" || status === "OVERDUE" || status === "COMPLETED"
-      ? status
-      : undefined;
+  // Status filter is plain client state, not a URL query param. It was
+  // a query param originally, but /contracts?status=X is a completely
+  // different URL from /contracts as far as the browser and service
+  // worker cache are concerned — only the bare /contracts route was
+  // ever warmed/precached for offline use, so clicking a status tab
+  // while offline triggered a fresh navigation to an uncached URL and
+  // silently failed (fell back to the dashboard shell). Filtering this
+  // way only changes what's rendered, not the URL, so it works
+  // identically online and offline with zero extra caching to manage.
+  const [validStatus, setValidStatus] = React.useState<ContractStatus | undefined>(
+    undefined
+  );
 
   const { isOnline } = useOnlineStatus();
   const [onlineContracts, setOnlineContracts] =
@@ -135,9 +140,10 @@ export default function ContractsPage() {
 
       <div className="flex gap-1 rounded-md bg-muted p-1 w-fit">
         {TABS.map((tab) => (
-          <Link
+          <button
             key={tab.label}
-            href={tab.value ? `/contracts?status=${tab.value}` : "/contracts"}
+            type="button"
+            onClick={() => setValidStatus(tab.value)}
             className={cn(
               "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
               validStatus === tab.value
@@ -146,7 +152,7 @@ export default function ContractsPage() {
             )}
           >
             {tab.label}
-          </Link>
+          </button>
         ))}
       </div>
 
