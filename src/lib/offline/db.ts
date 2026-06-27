@@ -90,6 +90,7 @@ export type OutboxOperationType =
   | "create_client"
   | "update_client"
   | "create_contract"
+  | "update_contract"
   | "record_payment";
 
 export type OutboxStatus = "pending" | "syncing" | "failed";

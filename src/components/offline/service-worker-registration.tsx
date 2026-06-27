@@ -52,15 +52,16 @@ async function warmPage(path: string): Promise<void> {
  * ever opening (say) /clients/new on that exact build hits a cache
  * miss + network failure for its chunk.
  *
- * It also separately warms the detail page for every contract
- * currently in the Dexie cache. /contracts/[id] is a dynamic route —
- * it can't be listed in OFFLINE_CAPABLE_STATIC_ROUTES because there's
- * no fixed set of URLs to precache. Instead, since the Dexie cache
- * already tracks "which contracts has this person actually worked
- * with recently," warming exactly those contract pages means Record
- * Payment stays reachable offline for any contract that shows up in
- * the offline contracts list — which is the only place a person could
- * navigate to one from while offline anyway.
+ * It also separately warms both the detail page AND the edit page for
+ * the 50 most-recently-updated contracts in the Dexie cache.
+ * /contracts/[id] and /contracts/[id]/edit are dynamic routes — they
+ * can't be listed in OFFLINE_CAPABLE_STATIC_ROUTES because there's no
+ * fixed set of URLs to precache. Instead, since the Dexie cache already
+ * tracks "which contracts has this person actually worked with
+ * recently," warming exactly those contracts' pages means Record
+ * Payment and Edit Contract stay reachable offline for any contract
+ * that shows up in the offline contracts list — which is the only
+ * place a person could navigate to one from while offline anyway.
  */
 export function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -91,20 +92,31 @@ export function ServiceWorkerRegistration() {
         // Cap how many we warm in one pass — a shop with a large
         // contract history shouldn't make every reconnect fire off
         // hundreds of fetches. Most recently updated first, since
-        // those are the ones most likely to be opened next.
+        // those are the ones most likely to be opened next. Capped
+        // at 50 (not 100) here because we now warm two pages per
+        // contract (view + edit) instead of one, keeping total fetch
+        // volume per reconnect roughly where it was before.
         const toWarm = cachedContracts
           .filter((c) => c.id > 0) // skip any optimistic/pending negative-id rows
           .sort(
             (a, b) =>
               new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           )
-          .slice(0, 100);
+          .slice(0, 50);
 
         for (const contract of toWarm) {
           try {
             await warmPage(`/contracts/${contract.id}`);
           } catch {
             // Same best-effort reasoning as above, per-contract.
+          }
+          try {
+            await warmPage(`/contracts/${contract.id}/edit`);
+          } catch {
+            // Editing while offline is a less common path than
+            // viewing — a miss here just means that specific edit
+            // falls back to the dashboard shell until the next
+            // reconnect re-warms it.
           }
         }
       } catch {

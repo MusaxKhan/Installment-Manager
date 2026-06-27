@@ -23,6 +23,7 @@ const OPERATION_LABELS: Record<string, string> = {
   create_client: "New client",
   update_client: "Client update",
   create_contract: "New contract",
+  update_contract: "Contract update",
   record_payment: "Payment recorded",
 };
 

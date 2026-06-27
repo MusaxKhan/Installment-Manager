@@ -35,7 +35,27 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
+
+  // A stale/invalid refresh token (e.g. from a session that was revoked,
+  // or a cookie left over from a previous deploy/environment) makes
+  // getUser() fail the same way on every single request until the
+  // cookie is cleared — the Supabase client logs this as a console
+  // error every time even though we handle it correctly below by
+  // treating it as "not logged in." Explicitly clearing the auth
+  // cookies here means it self-heals after one failed attempt instead
+  // of repeating indefinitely.
+  if (userError?.code === "refresh_token_not_found") {
+    const authCookieNames = request.cookies
+      .getAll()
+      .map((c) => c.name)
+      .filter((name) => name.includes("-auth-token"));
+
+    authCookieNames.forEach((name) => {
+      supabaseResponse.cookies.set(name, "", { maxAge: 0 });
+    });
+  }
 
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith("/login");

@@ -202,6 +202,43 @@ export function ContractForm({
         ? { ...parsed.data, clientId: selectedClientId } // restore the real (negative) temp id
         : parsed.data;
 
+      if (mode === "edit") {
+        if (!contractId) {
+          setError(
+            "Missing contract id — can't queue this edit. Please reload the page."
+          );
+          return;
+        }
+        if (hasPayments) {
+          // updateContractRecord (the server-side function this syncs
+          // to) refuses to change financial terms once payments exist.
+          // Catching this offline too, rather than letting it queue
+          // and only fail at sync time, avoids a confusing delay
+          // between "looks queued" and "actually rejected."
+          const financialFieldsChanged =
+            parsed.data.purchasePrice !== initialValues?.purchasePrice ||
+            parsed.data.profitPercent !== initialValues?.profitPercent ||
+            parsed.data.numberOfInstallments !==
+              initialValues?.numberOfInstallments ||
+            parsed.data.startDate !== initialValues?.startDate;
+          if (financialFieldsChanged) {
+            setError(
+              "Financial terms can't be changed once payments exist on this contract."
+            );
+            return;
+          }
+        }
+        await enqueueOperation("update_contract", {
+          ...payload,
+          contractId,
+        });
+        toast.success(
+          "Contract changes queued — will sync once you're back online."
+        );
+        router.push(`/contracts/${contractId}`);
+        return;
+      }
+
       await enqueueOperation("create_contract", payload);
       toast.success(
         isPendingClient

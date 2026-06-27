@@ -122,6 +122,10 @@ async function syncSingleEntry(
         payload: entry.payload,
         clientUpdateId:
           entry.type === "update_client" ? entry.payload.id : undefined,
+        contractUpdateId:
+          entry.type === "update_contract"
+            ? entry.payload.contractId
+            : undefined,
       }),
     });
 

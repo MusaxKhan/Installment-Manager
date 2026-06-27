@@ -8,6 +8,7 @@ import {
 } from "@/lib/services/client-service";
 import {
   createContractRecord,
+  updateContractRecord,
   ContractServiceError,
 } from "@/lib/services/contract-service";
 import { recordPayment, PaymentServiceError } from "@/lib/services/payment-service";
@@ -45,10 +46,12 @@ const syncRequestSchema = z.object({
     "create_client",
     "update_client",
     "create_contract",
+    "update_contract",
     "record_payment",
   ]),
   payload: z.record(z.string(), z.unknown()),
   clientUpdateId: z.number().int().positive().optional(),
+  contractUpdateId: z.number().int().positive().optional(),
 });
 
 export async function POST(request: Request) {
@@ -85,7 +88,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { type, payload, clientUpdateId } = parsed.data;
+  const { type, payload, clientUpdateId, contractUpdateId } = parsed.data;
 
   try {
     switch (type) {
@@ -129,6 +132,28 @@ export async function POST(request: Request) {
         }
         const contract = await createContractRecord(validated.data);
         return NextResponse.json({ success: true, data: contract });
+      }
+
+      case "update_contract": {
+        if (!contractUpdateId) {
+          return NextResponse.json(
+            { success: false, error: "Missing contractUpdateId for update_contract." },
+            { status: 400 }
+          );
+        }
+        const validated = contractSchema.safeParse(payload);
+        if (!validated.success) {
+          return NextResponse.json(
+            { success: false, error: validated.error.issues[0]?.message },
+            { status: 400 }
+          );
+        }
+        // updateContractRecord returns void and itself enforces that
+        // financial terms can't change once payments exist — same
+        // guard the offline form already checks client-side before
+        // queuing, so this is a backstop, not the only check.
+        await updateContractRecord(contractUpdateId, validated.data);
+        return NextResponse.json({ success: true, data: { id: contractUpdateId } });
       }
 
       case "record_payment": {

@@ -112,7 +112,7 @@ export default async function DashboardPage() {
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-400 mb-3">Core Operational Metrics</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <StatCard label="Active Portfolio Contracts" value={String(stats.totalActiveContracts)} icon={FileText} variant="blue" />
+              <StatCard label="Ongoing Contracts" value={String(stats.totalActiveContracts)} icon={FileText} variant="blue" />
               <StatCard label="Total Registered Clients" value={String(stats.totalClients)} icon={Users} variant="cyan" />
               <StatCard label="Outstanding Amount" value={formatPKR(stats.totalOutstandingAmount)} icon={Wallet} hint="Across active & overdue items" variant="indigo" />
               <StatCard label="Critical Overdue Contracts" value={String(stats.totalOverdueContracts)} icon={AlertTriangle} variant="rose" />

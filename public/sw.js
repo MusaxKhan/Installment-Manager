@@ -35,7 +35,7 @@
  * visited while online, so most real usage ends up cached anyway.
  */
 
-const CACHE_NAME = "sitara-shell-v4";
+const CACHE_NAME = "sitara-shell-v5";
 
 const SHELL_ASSETS = [
   "/",

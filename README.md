@@ -180,7 +180,10 @@ never "best-effort offline."**
 
 Queueable (safe to do with no connection, replayed later):
 - Create / edit client
-- Create contract
+- Create / edit contract (editing financial terms is blocked once
+  payments exist on that contract — both client-side before queuing,
+  and again server-side at sync time, since the contract may have
+  gained payments on another device in the meantime)
 - Record a payment
 
 Online-only (blocked in the UI with a clear message if offline):
@@ -268,19 +271,24 @@ with a tooltip explaining they need a connection.
 - **`/contracts/[id]`** (an individual contract's detail page) is
   opportunistically cached: if you've opened that specific contract at
   least once while online, its page (and the JS it needs) gets cached
-  automatically, and the warm-up additionally pre-warms the 100
-  most-recently-updated contracts in your Dexie cache right after every
-  reconnect — so in practice, most contracts you've worked with recently
-  open fine offline from a cold start too. **Important caveat:** unlike
+  automatically, and the warm-up additionally pre-warms both the detail
+  page and the edit page for the 50 most-recently-updated contracts in
+  your Dexie cache right after every reconnect — so in practice, most
+  contracts you've worked with recently open fine offline from a cold
+  start too, for viewing and editing alike. **Important caveat:** unlike
   `/clients`/`/contracts`, this page is server-rendered, so the balance/
   installment/payment numbers shown are frozen at whatever they were the
   last time that exact page was successfully loaded online — they do
   *not* live-update from Dexie the way the list pages do. The amber
   "payments queued" banner on that page exists specifically to flag this:
   it tells you the displayed balance hasn't accounted for anything queued
-  since. The **Record Payment** button itself still works correctly
-  offline regardless (it's a small Client Component that queues
-  independently of whether the page around it is stale).
+  since. The **Record Payment** button and the **Edit Contract** form
+  both still work correctly offline regardless of that staleness — each
+  is a Client Component that queues its own intent independently of
+  whether the page around it is stale, and editing specifically checks
+  (both before queuing and again server-side at sync time) that
+  financial terms aren't being changed on a contract that already has
+  payments.
 - **`/users`, `/investors`, `/phases`, `/payments`, `/distributions`,
   `/withdrawals`** have no offline path by design — they either need a
   live connection for what they do (inviting someone, anything touching
