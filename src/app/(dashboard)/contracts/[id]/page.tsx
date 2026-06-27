@@ -105,7 +105,7 @@ export default async function ContractDetailPage({
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">
-                Profit ({formatPercent(contract.profitPercent)})
+                Installment Package ({formatPercent(contract.profitPercent)})
               </dt>
               <dd className="mt-0.5 text-sm font-semibold tabular-nums text-status-completed">
                 {formatPKR(contract.profitAmount)}

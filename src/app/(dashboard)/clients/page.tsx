@@ -152,7 +152,7 @@ export default function ClientsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>CNIC</TableHead>
                   <TableHead>Phone</TableHead>
-                  <TableHead>Added</TableHead>
+                  <TableHead>Enrolled</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
