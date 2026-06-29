@@ -119,7 +119,7 @@ export async function GET(request: Request) {
     Metric: "Total Outstanding",
     Value:
       (contracts.data ?? []).reduce(
-        (sum: number, c: any) =>
+        (sum: number, c: { remaining_balance: number | null }) =>
           sum +
           Number(
             c.remaining_balance ?? 0
@@ -131,7 +131,7 @@ export async function GET(request: Request) {
     Metric: "Total Profit",
     Value:
       (contracts.data ?? []).reduce(
-        (sum: number, c: any) =>
+        (sum: number, c: { profit_amount: number | null }) =>
           sum +
           Number(
             c.profit_amount ?? 0
@@ -172,8 +172,30 @@ export async function GET(request: Request) {
   // Sheets
   // ----------------------------
 
+  interface ContractExportRow {
+    contract_code: string;
+    product_name: string;
+    purchase_price: number;
+    total_price: number;
+    remaining_balance: number;
+    status: string;
+    start_date: string;
+    expected_end_date: string | null;
+    clients: { name: string; client_code: string } | null;
+    business_phases: { phase_name: string } | null;
+  }
+
+  interface PaymentExportRow {
+    amount_paid: number;
+    remaining_balance: number;
+    payment_method: string | null;
+    payment_date: string;
+    remarks: string | null;
+    contracts: { contract_code: string } | null;
+  }
+
   const readableContracts =
-  (contracts.data ?? []).map((c: any) => ({
+  (contracts.data ?? []).map((c: ContractExportRow) => ({
     ContractCode: c.contract_code,
     ClientName: c.clients?.name,
     ClientCode: c.clients?.client_code,
@@ -188,7 +210,7 @@ export async function GET(request: Request) {
   }));
 
   const readablePayments =
-  (payments.data ?? []).map((p: any) => ({
+  (payments.data ?? []).map((p: PaymentExportRow) => ({
     ContractCode:
       p.contracts?.contract_code,
     AmountPaid:

@@ -18,8 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, WifiOff } from "lucide-react";
+import { Loader2, WifiOff, Ban } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { CalculationPreview } from "./calculation-preview";
+import { CashInHandNotice } from "./cash-in-hand-notice";
 import { createContractAction } from "@/lib/actions/contract-actions";
 import { useOnlineStatus } from "@/lib/offline/use-online-status";
 import { enqueueOperation } from "@/lib/offline/outbox";
@@ -40,6 +42,8 @@ import {
 interface ClientOption {
   id: number;
   label: string;
+  isBlacklisted?: boolean;
+  maxOverdueMonths?: number;
 }
 
 export function ContractForm({
@@ -49,6 +53,7 @@ export function ContractForm({
   contractId,
   hasPayments = false,
   initialValues,
+  cashInHand,
 }: {
   clients: ClientOption[];
   defaultClientId?: number;
@@ -56,6 +61,10 @@ export function ContractForm({
   mode?: "create" | "edit";
   contractId?: number;
   hasPayments?: boolean;
+  /** Current cash-in-hand, used to warn before a purchase that would
+   * exceed available cash and offer a shortcut to take a loan. Only
+   * meaningful for new contracts — omitted entirely on edit. */
+  cashInHand?: number;
 
   initialValues?: {
     clientId: number;
@@ -93,6 +102,8 @@ export function ContractForm({
     : (cachedClients ?? []).map((c) => ({
         id: c.id,
         label: `${c.clientCode} — ${c.name}`,
+        isBlacklisted: c.isBlacklisted,
+        maxOverdueMonths: c.maxOverdueMonths,
       }));
 
   const [clientId, setClientId] = React.useState<string>(
@@ -101,6 +112,9 @@ export function ContractForm({
       : defaultClientId
         ? String(defaultClientId)
         : ""
+  );
+  const selectedClient = clientOptions.find(
+    (c) => String(c.id) === clientId
   );
   const [purchasePrice, setPurchasePrice] =
     React.useState<number>(
@@ -281,7 +295,16 @@ export function ContractForm({
             <SelectContent>
               {clientOptions.map((client) => (
                 <SelectItem key={client.id} value={String(client.id)}>
-                  {client.label}
+                  <span
+                    className={cn(
+                      client.isBlacklisted && "text-status-overdue"
+                    )}
+                  >
+                    {client.isBlacklisted && "⛔ "}
+                    {client.label}
+                    {client.isBlacklisted &&
+                      ` (${client.maxOverdueMonths}mo overdue)`}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -292,6 +315,17 @@ export function ContractForm({
                 ? "No clients yet — create one first."
                 : "No clients cached locally yet. Connect once to cache your client list for offline use."}
             </p>
+          )}
+          {selectedClient?.isBlacklisted && (
+            <div className="flex items-start gap-2 rounded-md border border-status-overdue/30 bg-status-overdue-bg px-3 py-2 text-sm text-status-overdue">
+              <Ban className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                <strong>This client is blacklisted.</strong> They&apos;ve been
+                overdue for {selectedClient.maxOverdueMonths} months on a
+                previous contract. Consider their repayment history before
+                creating a new contract.
+              </p>
+            </div>
           )}
         </div>
 
@@ -373,6 +407,13 @@ export function ContractForm({
             />
           </div>
         </div>
+
+        {cashInHand !== undefined && (
+          <CashInHandNotice
+            cashInHand={cashInHand}
+            purchasePrice={purchasePrice}
+          />
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="startDate">Start Date</Label>

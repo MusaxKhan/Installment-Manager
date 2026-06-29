@@ -26,6 +26,8 @@ export const ONLINE_ONLY_OPERATIONS = [
   "create_investor",
   "create_business_phase",
   "add_investment",
+  "create_loan",
+  "record_loan_repayment",
 ] as const;
 
 export type OnlineOnlyOperation = (typeof ONLINE_ONLY_OPERATIONS)[number];
@@ -43,6 +45,10 @@ export const OFFLINE_BLOCKED_MESSAGE: Record<OnlineOnlyOperation, string> = {
     "Creating a business phase needs a live connection — it closes the previous phase as part of the same action.",
   add_investment:
     "Recording an investor's investment needs a live connection right now, since it feeds directly into profit-split math.",
+  create_loan:
+    "Taking a loan needs a live connection — it writes directly to the cash-in-hand ledger, which must stay accurate in real time.",
+  record_loan_repayment:
+    "Recording a loan repayment needs a live connection, for the same reason as taking a loan — it affects cash-in-hand directly.",
 };
 
 /**

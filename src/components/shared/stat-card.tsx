@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -8,6 +10,10 @@ interface StatCardProps {
   hint?: string;
   className?: string;
   variant?: "blue" | "indigo" | "amber" | "emerald" | "rose" | "violet" | "cyan" | "slate";
+  /** When set, the whole card becomes a link — used so dashboard stat
+   * cards can take the person straight to the page that explains the
+   * number (e.g. "Ongoing Contracts" -> /contracts?status=ACTIVE). */
+  href?: string;
 }
 
 export function StatCard({
@@ -17,6 +23,7 @@ export function StatCard({
   hint,
   className,
   variant = "slate",
+  href,
 }: StatCardProps) {
   
   const variantStyles = {
@@ -32,27 +39,45 @@ export function StatCard({
 
   const currentStyles = variantStyles[variant];
 
-  return (
-    <Card className={cn("group relative overflow-hidden rounded-2xl border shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md", currentStyles.bg, className)}>
-      <CardContent className="flex items-start justify-between gap-4 p-5">
-        <div className="space-y-1">
-          <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 group-hover:text-slate-500 transition-colors">
-            {label}
+  const cardContent = (
+    <CardContent className="flex items-start justify-between gap-4 p-5">
+      <div className="space-y-1">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 group-hover:text-slate-500 transition-colors">
+          {label}
+        </p>
+        <p className={cn("text-2xl tabular-nums tracking-tight leading-none pt-1", currentStyles.text)}>
+          {value}
+        </p>
+        {hint && (
+          <p className="text-[11px] font-medium text-slate-400 mt-1.5 flex items-center gap-1">
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            {hint}
           </p>
-          <p className={cn("text-2xl tabular-nums tracking-tight leading-none pt-1", currentStyles.text)}>
-            {value}
-          </p>
-          {hint && (
-            <p className="text-[11px] font-medium text-slate-400 mt-1.5 flex items-center gap-1">
-              <span className="h-1 w-1 rounded-full bg-slate-300" />
-              {hint}
-            </p>
-          )}
-        </div>
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 shadow-sm border border-black/[0.02]", currentStyles.iconBg)}>
-          <Icon className="h-4 w-4 stroke-[2.5]" />
-        </div>
-      </CardContent>
-    </Card>
+        )}
+      </div>
+      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 shadow-sm border border-black/[0.02]", currentStyles.iconBg)}>
+        {href ? (
+          <ChevronRight className="h-4 w-4 stroke-[2.5] opacity-0 group-hover:opacity-100 transition-opacity absolute" />
+        ) : null}
+        <Icon className={cn("h-4 w-4 stroke-[2.5] transition-opacity", href && "group-hover:opacity-0")} />
+      </div>
+    </CardContent>
   );
+
+  const cardClassName = cn(
+    "group relative overflow-hidden rounded-2xl border shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md",
+    href && "cursor-pointer",
+    currentStyles.bg,
+    className
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className="block">
+        <Card className={cardClassName}>{cardContent}</Card>
+      </Link>
+    );
+  }
+
+  return <Card className={cardClassName}>{cardContent}</Card>;
 }

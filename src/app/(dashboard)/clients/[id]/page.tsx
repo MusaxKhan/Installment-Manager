@@ -9,8 +9,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ContractStatusBadge } from "@/components/shared/status-badge";
+import { BlacklistBadge } from "@/components/shared/blacklist-badge";
 import { DeleteClientButton } from "@/components/clients/delete-client-button";
 import { getClientById } from "@/lib/services/client-service";
+import { BLACKLIST_OVERDUE_MONTHS_THRESHOLD } from "@/lib/utils/calculations";
 import { formatDate, formatPKR } from "@/lib/utils/format";
 
 export default async function ClientDetailPage({
@@ -22,6 +24,12 @@ export default async function ClientDetailPage({
   const client = await getClientById(Number(id));
 
   if (!client) notFound();
+
+  const maxOverdueMonths = Math.max(
+    0,
+    ...client.contracts.map((c) => c.overdueMonths)
+  );
+  const isBlacklisted = maxOverdueMonths >= BLACKLIST_OVERDUE_MONTHS_THRESHOLD;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -39,6 +47,11 @@ export default async function ClientDetailPage({
               {client.clientCode}
             </p>
             <CardTitle className="mt-1 text-xl">{client.name}</CardTitle>
+            {isBlacklisted && (
+              <div className="mt-2">
+                <BlacklistBadge maxOverdueMonths={maxOverdueMonths} />
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" asChild>

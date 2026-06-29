@@ -32,6 +32,13 @@ export interface Client {
   syncVersion: number;
 }
 
+export interface ClientWithBlacklistStatus extends Client {
+  /** True if any of this client's contracts has been overdue 3+ months */
+  isBlacklisted: boolean;
+  /** The longest overdue streak across all of this client's contracts, in months */
+  maxOverdueMonths: number;
+}
+
 export interface ClientWithContracts extends Client {
   contracts: Contract[];
 }
@@ -141,6 +148,9 @@ export interface DashboardStats {
   totalProfitGenerated: number;
   totalProfitDistributed: number;
   activePhaseInvestmentTotal: number;
+  cashInHand: number;
+  totalOutstandingLoans: number;
+  totalCompletedContracts: number;
 }
 
 // ── Search ──
@@ -236,4 +246,8 @@ export interface Withdrawal {
 
 export interface WithdrawalWithInvestor extends Withdrawal {
   investorName: string;
+  /** This investor's available balance immediately after this specific
+   * withdrawal — i.e. their distributed profit total minus every
+   * withdrawal up to and including this one, in chronological order. */
+  remainingBalance: number;
 }

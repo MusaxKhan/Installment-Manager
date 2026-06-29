@@ -4,6 +4,7 @@ import {
   mapInvestorPhaseInvestment,
 } from "./mappers";
 import { round2 } from "@/lib/utils/calculations";
+import { writeCashLedgerEntry } from "./cash-ledger-service";
 import type {
   BusinessPhase,
   BusinessPhaseWithTotals,
@@ -182,7 +183,7 @@ export async function upsertInvestorPhaseInvestment(values: {
 
   const { data: existing, error: fetchError } = await supabase
     .from("investor_phase_investments")
-    .select("id")
+    .select("id, investment_amount")
     .eq("phase_id", values.phaseId)
     .eq("investor_id", values.investorId)
     .maybeSingle();
@@ -204,20 +205,53 @@ export async function upsertInvestorPhaseInvestment(values: {
         `Failed to update investment: ${error.message}`
       );
     }
+
+    // Only the CHANGE in investment amount is new cash moving — if an
+    // investor's stake goes from 100k to 150k, 50k is new money coming
+    // in. If it's reduced, that delta is negative (cash effectively
+    // leaving, e.g. correcting an over-entry) and the ledger entry
+    // reflects that automatically since amount is signed.
+    const delta = round2(
+      values.investmentAmount - Number(existing.investment_amount)
+    );
+    if (delta !== 0) {
+      await writeCashLedgerEntry(supabase, {
+        entryType: "investment",
+        amount: delta,
+        investorId: values.investorId,
+        investmentId: existing.id,
+        description:
+          delta > 0
+            ? "Increase to existing investment"
+            : "Reduction to existing investment",
+      });
+    }
     return;
   }
 
-  const { error } = await supabase.from("investor_phase_investments").insert({
-    phase_id: values.phaseId,
-    investor_id: values.investorId,
-    investment_amount: values.investmentAmount,
-  });
+  const { data: newInvestment, error } = await supabase
+    .from("investor_phase_investments")
+    .insert({
+      phase_id: values.phaseId,
+      investor_id: values.investorId,
+      investment_amount: values.investmentAmount,
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw new BusinessPhaseServiceError(
       `Failed to record investment: ${error.message}`
     );
   }
+
+  await writeCashLedgerEntry(supabase, {
+    entryType: "investment",
+    amount: values.investmentAmount,
+    investorId: values.investorId,
+    investmentId: newInvestment.id,
+    description: "New investor investment",
+  });
 }
 
 export async function removeInvestorPhaseInvestment(
@@ -230,7 +264,7 @@ export async function removeInvestorPhaseInvestment(
   // past distribution percentages unreconstructable from current data.
   const { data: investment, error: fetchError } = await supabase
     .from("investor_phase_investments")
-    .select("phase_id")
+    .select("phase_id, investor_id, investment_amount")
     .eq("id", id)
     .single();
 
@@ -267,4 +301,15 @@ export async function removeInvestorPhaseInvestment(
       `Failed to remove investment: ${error.message}`
     );
   }
+
+  // Reverse the cash-in this investment originally contributed — the
+  // investment_id foreign key is now dangling (the row is gone), so
+  // this entry is written without one; investor_id alone is enough to
+  // trace it back in the ledger view.
+  await writeCashLedgerEntry(supabase, {
+    entryType: "investment",
+    amount: -Number(investment.investment_amount),
+    investorId: investment.investor_id,
+    description: "Investment removed from phase",
+  });
 }

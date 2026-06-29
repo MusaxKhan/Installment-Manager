@@ -33,7 +33,7 @@ export default async function InvestorDetailPage({
   const [phaseHistory, distributions, withdrawals] = await Promise.all([
     getInvestorPhaseHistory(investorId),
     listDistributionsForInvestor(investorId),
-    listWithdrawalsForInvestor(investorId),
+    listWithdrawalsForInvestor(investorId, investor.totalDistributed),
   ]);
 
   return (
@@ -166,7 +166,7 @@ export default async function InvestorDetailPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="withdrawals">
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Withdrawal History</CardTitle>
           <WithdrawalDialog

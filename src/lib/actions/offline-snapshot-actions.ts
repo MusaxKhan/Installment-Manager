@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { BLACKLIST_OVERDUE_MONTHS_THRESHOLD } from "@/lib/utils/calculations";
 
 /**
  * Returns a flat, denormalized snapshot suitable for writing straight
@@ -63,18 +64,46 @@ export async function getOfflineSnapshot() {
     throw new Error(`Failed to snapshot payments: ${paymentsRes.error.message}`);
   }
 
+  // Blacklist status needs to consider ALL of a client's contracts, not
+  // just whichever 500 most-recently-updated ones made it into the
+  // windowed snapshot above — an old, long-overdue contract should
+  // still flag a client even if it's fallen out of the recent window.
+  const { data: overdueRows, error: overdueError } = await supabase
+    .from("contracts")
+    .select("client_id, overdue_months")
+    .gt("overdue_months", 0);
+
+  if (overdueError) {
+    throw new Error(
+      `Failed to snapshot overdue contract data: ${overdueError.message}`
+    );
+  }
+
+  const maxOverdueByClient = new Map<number, number>();
+  for (const row of overdueRows ?? []) {
+    const current = maxOverdueByClient.get(row.client_id) ?? 0;
+    if (row.overdue_months > current) {
+      maxOverdueByClient.set(row.client_id, row.overdue_months);
+    }
+  }
+
   return {
-    clients: (clientsRes.data ?? []).map((c) => ({
-      id: c.id,
-      clientCode: c.client_code,
-      name: c.name,
-      cnic: c.cnic,
-      phone: c.phone,
-      address: c.address,
-      isDeleted: c.is_deleted,
-      updatedAt: c.updated_at,
-      syncVersion: c.sync_version,
-    })),
+    clients: (clientsRes.data ?? []).map((c) => {
+      const maxOverdueMonths = maxOverdueByClient.get(c.id) ?? 0;
+      return {
+        id: c.id,
+        clientCode: c.client_code,
+        name: c.name,
+        cnic: c.cnic,
+        phone: c.phone,
+        address: c.address,
+        isDeleted: c.is_deleted,
+        updatedAt: c.updated_at,
+        syncVersion: c.sync_version,
+        maxOverdueMonths,
+        isBlacklisted: maxOverdueMonths >= BLACKLIST_OVERDUE_MONTHS_THRESHOLD,
+      };
+    }),
     contracts: (contractsRes.data ?? []).map((c) => ({
       id: c.id,
       contractCode: c.contract_code,

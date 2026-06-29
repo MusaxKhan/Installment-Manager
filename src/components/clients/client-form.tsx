@@ -106,6 +106,8 @@ export function ClientForm({
           isDeleted: false,
           updatedAt: new Date().toISOString(),
           syncVersion: 0,
+          maxOverdueMonths: 0,
+          isBlacklisted: false,
         });
       }
 

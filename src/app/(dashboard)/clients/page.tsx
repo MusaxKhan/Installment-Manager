@@ -20,7 +20,9 @@ import { getClientsList } from "@/lib/actions/client-picker-actions";
 import { offlineDb } from "@/lib/offline/db";
 import { useOnlineStatus } from "@/lib/offline/use-online-status";
 import { formatDate } from "@/lib/utils/format";
-import type { Client } from "@/types/domain";
+import { cn } from "@/lib/utils";
+import { BlacklistBadge } from "@/components/shared/blacklist-badge";
+import type { ClientWithBlacklistStatus } from "@/types/domain";
 
 function normalizeNumber(value: string): string {
   return value.replace(/\D/g, "");
@@ -29,7 +31,7 @@ function normalizeNumber(value: string): string {
 export default function ClientsPage() {
   const { isOnline } = useOnlineStatus();
   const [search, setSearch] = React.useState("");
-  const [onlineClients, setOnlineClients] = React.useState<Client[] | null>(null);
+  const [onlineClients, setOnlineClients] = React.useState<ClientWithBlacklistStatus[] | null>(null);
   const [isLoadingOnline, setIsLoadingOnline] = React.useState(false);
 
   // Online path: fetch fresh from the server, same as before.
@@ -78,7 +80,9 @@ export default function ClientsPage() {
   const clients = isOnline ? onlineClients : cachedClients;
   const isLoading = isOnline ? isLoadingOnline && onlineClients === null : clients === undefined;
 
-  function hasCreatedAt(c: Client | { updatedAt: string }): c is Client {
+  function hasCreatedAt(
+    c: ClientWithBlacklistStatus | { updatedAt: string }
+  ): c is ClientWithBlacklistStatus {
     return "createdAt" in c;
   }
 
@@ -92,6 +96,8 @@ export default function ClientsPage() {
     cnic: c.cnic,
     phone: c.phone,
     dateLabel: hasCreatedAt(c) ? c.createdAt : c.updatedAt,
+    isBlacklisted: c.isBlacklisted,
+    maxOverdueMonths: c.maxOverdueMonths,
   }));
 
   return (
@@ -153,11 +159,18 @@ export default function ClientsPage() {
                   <TableHead>CNIC</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Enrolled</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((client) => (
-                  <TableRow key={client.id} className="cursor-pointer">
+                  <TableRow
+                    key={client.id}
+                    className={cn(
+                      "cursor-pointer",
+                      client.isBlacklisted && "bg-status-overdue-bg/40"
+                    )}
+                  >
                     <TableCell>
                       <Link
                         href={`/clients/${client.id}`}
@@ -168,7 +181,14 @@ export default function ClientsPage() {
                     </TableCell>
                     <TableCell>
                       <Link href={`/clients/${client.id}`} className="block">
-                        {client.name}
+                        <span
+                          className={cn(
+                            client.isBlacklisted &&
+                              "font-medium text-status-overdue"
+                          )}
+                        >
+                          {client.name}
+                        </span>
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
@@ -179,6 +199,13 @@ export default function ClientsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDate(client.dateLabel)}
+                    </TableCell>
+                    <TableCell>
+                      {client.isBlacklisted ? (
+                        <BlacklistBadge maxOverdueMonths={client.maxOverdueMonths} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Good standing</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

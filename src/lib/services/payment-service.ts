@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { mapPayment, mapPaymentEdit } from "./mappers";
 import { allocatePayment, round2 } from "@/lib/utils/calculations";
 import { recomputeContractStatus } from "./contract-service";
+import { writeCashLedgerEntry } from "./cash-ledger-service";
 import type { Payment, PaymentWithEdits } from "@/types/domain";
 import type {
   PaymentFormValues,
@@ -120,6 +121,18 @@ export async function recordPayment(
       `Failed to record payment: ${paymentError.message}`
     );
   }
+
+  // Cash-in: the full payment amount flows into cash-in-hand the
+  // moment it's collected — not deferred until the contract completes.
+  // This is what makes cash-in-hand track real, spendable cash rather
+  // than just "profit recognized so far."
+  await writeCashLedgerEntry(supabase, {
+    entryType: "payment_received",
+    amount: values.amountPaid,
+    contractId: values.contractId,
+    entryDate: values.paymentDate,
+    description: `Payment received for contract #${values.contractId}`,
+  });
 
   // Update contract's remaining balance.
   const { error: contractUpdateError } = await supabase

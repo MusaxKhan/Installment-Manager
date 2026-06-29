@@ -166,6 +166,39 @@ export type WithdrawalRow = {
   sync_version: number;
 }
 
+export type CashLedgerEntryRow = {
+  id: number;
+  entry_type:
+    | "investment"
+    | "loan"
+    | "payment_received"
+    | "purchase"
+    | "withdrawal"
+    | "loan_repayment";
+  amount: number;
+  contract_id: number | null;
+  investor_id: number | null;
+  investment_id: number | null;
+  loan_id: number | null;
+  withdrawal_id: number | null;
+  description: string | null;
+  entry_date: string;
+  created_at: string;
+}
+
+export type LoanRow = {
+  id: number;
+  lender_name: string;
+  amount: number;
+  reason: string | null;
+  loan_date: string;
+  amount_repaid: number;
+  status: "ACTIVE" | "REPAID";
+  created_at: string;
+  updated_at: string;
+  sync_version: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Supabase Database generic type (for createClient<Database>())
 //
@@ -199,6 +232,13 @@ export interface Database {
             columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "contracts_phase_id_fkey";
+            columns: ["phase_id"];
+            isOneToOne: false;
+            referencedRelation: "business_phases";
             referencedColumns: ["id"];
           }
         ];
@@ -326,6 +366,54 @@ export interface Database {
           }
         ];
       };
+      cash_ledger: {
+        Row: CashLedgerEntryRow;
+        Insert: Partial<CashLedgerEntryRow>;
+        Update: Partial<CashLedgerEntryRow>;
+        Relationships: [
+          {
+            foreignKeyName: "cash_ledger_contract_id_fkey";
+            columns: ["contract_id"];
+            isOneToOne: false;
+            referencedRelation: "contracts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_ledger_investor_id_fkey";
+            columns: ["investor_id"];
+            isOneToOne: false;
+            referencedRelation: "investors";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_ledger_investment_id_fkey";
+            columns: ["investment_id"];
+            isOneToOne: false;
+            referencedRelation: "investor_phase_investments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_ledger_loan_id_fkey";
+            columns: ["loan_id"];
+            isOneToOne: false;
+            referencedRelation: "loans";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_ledger_withdrawal_id_fkey";
+            columns: ["withdrawal_id"];
+            isOneToOne: false;
+            referencedRelation: "withdrawals";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      loans: {
+        Row: LoanRow;
+        Insert: Partial<LoanRow>;
+        Update: Partial<LoanRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -353,6 +441,27 @@ export interface Database {
           p_withdrawal_date: string;
         };
         Returns: WithdrawalRow[];
+      };
+      current_cash_in_hand: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      create_loan: {
+        Args: {
+          p_lender_name: string;
+          p_amount: number;
+          p_reason: string | null;
+          p_loan_date: string;
+        };
+        Returns: LoanRow[];
+      };
+      record_loan_repayment: {
+        Args: {
+          p_loan_id: number;
+          p_amount: number;
+          p_repayment_date: string;
+        };
+        Returns: LoanRow[];
       };
     };
   };

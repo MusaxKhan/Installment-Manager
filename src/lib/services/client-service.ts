@@ -1,15 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapClient, mapContract } from "./mappers";
-import type { Client, ClientWithContracts } from "@/types/domain";
+import { BLACKLIST_OVERDUE_MONTHS_THRESHOLD } from "@/lib/utils/calculations";
+import type {
+  Client,
+  ClientWithContracts,
+  ClientWithBlacklistStatus,
+} from "@/types/domain";
 import type { ClientFormValues } from "@/lib/validations/client";
-import { normalize } from "path";
 
 export class ClientServiceError extends Error {}
 
 function normalizeNumber(value: string): string {
   return value.replace(/\D/g, "");
 }
-
 
 /** Generates the next sequential client code via the DB sequence function */
 async function getNextClientCode(
@@ -24,6 +27,17 @@ async function getNextClientCode(
   return data as string;
 }
 
+/**
+ * Search is done client-side (in this function, after fetching) rather
+ * than pushed down to a SQL `ilike` filter. This is deliberate: phone
+ * and CNIC numbers get searched in whatever format the person types
+ * them (e.g. "03001234567" should match a stored "0300-1234567"), and
+ * normalizing both sides of that comparison is awkward to express as a
+ * single SQL filter. The tradeoff is that this fetches the full
+ * non-deleted client list on every search — fine at this shop's scale,
+ * worth revisiting (e.g. a normalized search column + index) if the
+ * client list grows into the thousands.
+ */
 export async function listClients(params?: {
   search?: string;
   includeDeleted?: boolean;
@@ -34,13 +48,6 @@ export async function listClients(params?: {
   if (!params?.includeDeleted) {
     query = query.eq("is_deleted", false);
   }
-
-  // if (params?.search && params.search.trim().length > 0) {
-  //   const term = params.search.trim();
-  //   query = query.or(
-  //     `name.ilike.%${term}%,cnic.ilike.%${term}%,phone.ilike.%${term}%,client_code.ilike.%${term}%`
-  //   );
-  // }
 
   query = query.order("created_at", { ascending: false });
 
@@ -68,6 +75,55 @@ export async function listClients(params?: {
   }
 
   return clients;
+}
+
+/**
+ * Same as listClients, but additionally computes blacklist status per
+ * client. A client is blacklisted if ANY of their contracts has been
+ * continuously overdue for BLACKLIST_OVERDUE_MONTHS_THRESHOLD months
+ * or more. This is computed fresh on every call (not stored) so it
+ * can never drift out of sync and auto-resolves the moment a client
+ * catches up — there's no separate "unblacklist" action to remember.
+ *
+ * Implemented as one extra query (max overdue_months per client_id,
+ * grouped) rather than N+1 — fine at this shop's scale; if the client
+ * list grows large, this could become a materialized view instead.
+ */
+export async function listClientsWithBlacklistStatus(params?: {
+  search?: string;
+  includeDeleted?: boolean;
+}): Promise<ClientWithBlacklistStatus[]> {
+  const supabase = await createClient();
+  const [clients, contractsRes] = await Promise.all([
+    listClients(params),
+    supabase
+      .from("contracts")
+      .select("client_id, overdue_months")
+      .gt("overdue_months", 0),
+  ]);
+
+  if (contractsRes.error) {
+    throw new ClientServiceError(
+      `Failed to load overdue contract data: ${contractsRes.error.message}`
+    );
+  }
+
+  const maxOverdueByClient = new Map<number, number>();
+  for (const row of contractsRes.data ?? []) {
+    const current = maxOverdueByClient.get(row.client_id) ?? 0;
+    if (row.overdue_months > current) {
+      maxOverdueByClient.set(row.client_id, row.overdue_months);
+    }
+  }
+
+  return clients.map((client) => {
+    const maxOverdueMonths = maxOverdueByClient.get(client.id) ?? 0;
+    return {
+      ...client,
+      maxOverdueMonths,
+      isBlacklisted: maxOverdueMonths >= BLACKLIST_OVERDUE_MONTHS_THRESHOLD,
+    };
+  });
 }
 
 export async function getClientById(

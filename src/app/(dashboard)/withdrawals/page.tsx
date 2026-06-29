@@ -40,6 +40,7 @@ export default async function WithdrawalsPage() {
                   <TableHead>Date</TableHead>
                   <TableHead>Investor</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Remaining Balance</TableHead>
                   <TableHead>Reason</TableHead>
                 </TableRow>
               </TableHeader>
@@ -57,6 +58,9 @@ export default async function WithdrawalsPage() {
                     </TableCell>
                     <TableCell className="tabular-nums font-medium text-status-overdue">
                       −{formatPKR(w.amount)}
+                    </TableCell>
+                    <TableCell className="tabular-nums font-semibold">
+                      {formatPKR(w.remainingBalance)}
                     </TableCell>
                     <TableCell className="max-w-[280px] truncate text-muted-foreground">
                       {w.reason || "—"}

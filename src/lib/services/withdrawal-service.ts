@@ -1,46 +1,108 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapWithdrawal } from "./mappers";
+import { round2 } from "@/lib/utils/calculations";
 import type { Withdrawal, WithdrawalWithInvestor } from "@/types/domain";
 import type { WithdrawalFormValues } from "@/lib/validations/withdrawal";
 
 export class WithdrawalServiceError extends Error {}
 
 export async function listWithdrawalsForInvestor(
-  investorId: number
-): Promise<Withdrawal[]> {
+  investorId: number,
+  totalDistributed: number
+): Promise<(Withdrawal & { remainingBalance: number })[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("withdrawals")
     .select("*")
     .eq("investor_id", investorId)
-    .order("withdrawal_date", { ascending: false });
+    .order("withdrawal_date", { ascending: true })
+    .order("created_at", { ascending: true });
 
   if (error) {
     throw new WithdrawalServiceError(
       `Failed to list withdrawals: ${error.message}`
     );
   }
-  return (data ?? []).map(mapWithdrawal);
+
+  let runningBalance = totalDistributed;
+  const withBalances = (data ?? []).map((row) => {
+    runningBalance = round2(runningBalance - Number(row.amount));
+    return { ...mapWithdrawal(row), remainingBalance: runningBalance };
+  });
+
+  // Newest first for display, matching the rest of the app's history lists.
+  return withBalances.reverse();
 }
 
 export async function listAllWithdrawals(): Promise<WithdrawalWithInvestor[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("withdrawals")
-    .select("*, investor:investors(name)")
-    .order("withdrawal_date", { ascending: false })
-    .limit(200);
 
-  if (error) {
+  // Fetch the FULL withdrawal history (not capped) — computing a
+  // correct running balance per investor requires every prior
+  // withdrawal in chronological order, not just whichever page of
+  // recent ones we're about to display. Capping happens after the
+  // balance math, not before.
+  const [withdrawalsRes, distributionsRes] = await Promise.all([
+    supabase
+      .from("withdrawals")
+      .select("*, investor:investors(name)")
+      .order("withdrawal_date", { ascending: true })
+      .order("created_at", { ascending: true }),
+    supabase.from("profit_distributions").select("investor_id, profit_amount"),
+  ]);
+
+  if (withdrawalsRes.error) {
     throw new WithdrawalServiceError(
-      `Failed to list withdrawals: ${error.message}`
+      `Failed to list withdrawals: ${withdrawalsRes.error.message}`
+    );
+  }
+  if (distributionsRes.error) {
+    throw new WithdrawalServiceError(
+      `Failed to load distributed profit totals: ${distributionsRes.error.message}`
     );
   }
 
-  return (data ?? []).map((row) => ({
-    ...mapWithdrawal(row),
-    investorName: row.investor?.name ?? "Unknown investor",
-  }));
+  const totalDistributedByInvestor = new Map<number, number>();
+  for (const row of distributionsRes.data ?? []) {
+    if (row.investor_id === null) continue;
+    totalDistributedByInvestor.set(
+      row.investor_id,
+      (totalDistributedByInvestor.get(row.investor_id) ?? 0) +
+        Number(row.profit_amount)
+    );
+  }
+
+  // Walk each investor's withdrawals oldest-first, subtracting as we
+  // go, so remainingBalance on each row reflects their balance
+  // immediately after that specific withdrawal.
+  const runningBalanceByInvestor = new Map<number, number>();
+  const withResults: WithdrawalWithInvestor[] = [];
+
+  for (const row of withdrawalsRes.data ?? []) {
+    const startingBalance =
+      runningBalanceByInvestor.get(row.investor_id) ??
+      totalDistributedByInvestor.get(row.investor_id) ??
+      0;
+    const balanceAfter = round2(startingBalance - Number(row.amount));
+    runningBalanceByInvestor.set(row.investor_id, balanceAfter);
+
+    withResults.push({
+      ...mapWithdrawal(row),
+      investorName: row.investor?.name ?? "Unknown investor",
+      remainingBalance: balanceAfter,
+    });
+  }
+
+  // Display newest-first, same ordering the page expects, capped at
+  // 200 most recent for display only — the balance math above already
+  // used the full history.
+  return withResults
+    .sort(
+      (a, b) =>
+        new Date(b.withdrawalDate).getTime() -
+        new Date(a.withdrawalDate).getTime()
+    )
+    .slice(0, 200);
 }
 
 /**

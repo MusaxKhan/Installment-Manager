@@ -12,7 +12,7 @@ import type { Withdrawal } from "@/types/domain";
 export function WithdrawalHistoryTable({
   withdrawals,
 }: {
-  withdrawals: Withdrawal[];
+  withdrawals: (Withdrawal & { remainingBalance: number })[];
 }) {
   if (withdrawals.length === 0) {
     return (
@@ -28,6 +28,7 @@ export function WithdrawalHistoryTable({
         <TableRow>
           <TableHead>Date</TableHead>
           <TableHead>Amount</TableHead>
+          <TableHead>Remaining Balance</TableHead>
           <TableHead>Reason</TableHead>
         </TableRow>
       </TableHeader>
@@ -37,6 +38,9 @@ export function WithdrawalHistoryTable({
             <TableCell>{formatDate(w.withdrawalDate)}</TableCell>
             <TableCell className="tabular-nums font-medium text-status-overdue">
               −{formatPKR(w.amount)}
+            </TableCell>
+            <TableCell className="tabular-nums font-semibold">
+              {formatPKR(w.remainingBalance)}
             </TableCell>
             <TableCell className="text-muted-foreground">
               {w.reason || "—"}

@@ -11,6 +11,15 @@
 
 import { addMonths, toDateInputValue } from "./format";
 
+/**
+ * A client is blacklisted once any single contract of theirs has been
+ * continuously overdue for this many months or more. Centralized here
+ * so the threshold is defined exactly once — client-service.ts reads
+ * this when computing blacklist status, and any UI copy referencing
+ * "3 months" should pull from here too rather than hardcoding it again.
+ */
+export const BLACKLIST_OVERDUE_MONTHS_THRESHOLD = 3;
+
 /** Round to 2 decimal places, avoiding binary float artifacts like 12.000000001 */
 export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;

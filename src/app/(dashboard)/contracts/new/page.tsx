@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ContractForm } from "@/components/contracts/contract-form";
 import { getClientsForPicker } from "@/lib/actions/client-picker-actions";
+import { getCashInHand } from "@/lib/services/cash-ledger-service";
 
 export default async function NewContractPage({
   searchParams,
@@ -11,7 +12,10 @@ export default async function NewContractPage({
   searchParams: Promise<{ clientId?: string }>;
 }) {
   const { clientId } = await searchParams;
-  const clients = await getClientsForPicker();
+  const [clients, cashInHand] = await Promise.all([
+    getClientsForPicker(),
+    getCashInHand(),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -30,6 +34,7 @@ export default async function NewContractPage({
           <ContractForm
             clients={clients}
             defaultClientId={clientId ? Number(clientId) : undefined}
+            cashInHand={cashInHand}
           />
         </CardContent>
       </Card>

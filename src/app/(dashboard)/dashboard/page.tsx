@@ -9,8 +9,10 @@ import {
   Coins,
   AlertCircle,
   ArrowRight,
-  TrendingDown,
-  Sparkles
+  Sparkles,
+  HandCoins,
+  CheckCircle2,
+  BarChart3,
 } from "lucide-react";
 import { StatCard } from "@/components/shared/stat-card";
 import { ContractStatusBadge } from "@/components/shared/status-badge";
@@ -26,7 +28,6 @@ import { getDashboardStats } from "@/lib/services/dashboard-service";
 import { listContracts } from "@/lib/services/contract-service";
 import { getActiveBusinessPhase } from "@/lib/services/business-phase-service";
 import { formatPKR, formatDate } from "@/lib/utils/format";
-import { Download } from "lucide-react";
 import { ExportDialog } from "@/components/export/export-dialog";
 import { listBusinessPhases } from "@/lib/services/business-phase-service";
 
@@ -64,6 +65,14 @@ export default async function DashboardPage() {
         
         {/* Dynamic Context Tag */}
         <div className="flex items-center gap-3 self-start md:self-center">
+        {/* View Graphs Button */}
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/graphs">
+            <BarChart3 className="h-4 w-4" />
+            View Stats Through Graph
+          </Link>
+        </Button>
+
         {/* Export Button */}
         <ExportDialog phases={phases} />
 
@@ -112,10 +121,13 @@ export default async function DashboardPage() {
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-400 mb-3">Core Operational Metrics</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <StatCard label="Ongoing Contracts" value={String(stats.totalActiveContracts)} icon={FileText} variant="blue" />
-              <StatCard label="Total Registered Clients" value={String(stats.totalClients)} icon={Users} variant="cyan" />
-              <StatCard label="Outstanding Amount" value={formatPKR(stats.totalOutstandingAmount)} icon={Wallet} hint="Across active & overdue items" variant="indigo" />
-              <StatCard label="Critical Overdue Contracts" value={String(stats.totalOverdueContracts)} icon={AlertTriangle} variant="rose" />
+              <StatCard label="Ongoing Contracts" value={String(stats.totalActiveContracts)} icon={FileText} variant="blue" href="/contracts?status=ACTIVE" />
+              <StatCard label="Total Registered Clients" value={String(stats.totalClients)} icon={Users} variant="cyan" href="/clients" />
+              <StatCard label="Outstanding Amount" value={formatPKR(stats.totalOutstandingAmount)} icon={Wallet} hint="Across active & overdue items" variant="indigo" href="/contracts" />
+              <StatCard label="Critical Overdue Contracts" value={String(stats.totalOverdueContracts)} icon={AlertTriangle} variant="rose" href="/contracts?status=OVERDUE" />
+              <StatCard label="Completed Contracts" value={String(stats.totalCompletedContracts)} icon={CheckCircle2} variant="emerald" href="/contracts?status=COMPLETED" />
+              <StatCard label="Cash in Hand" value={formatPKR(stats.cashInHand)} icon={Wallet} hint="Available for next purchases" variant="emerald" href="/cash-ledger" />
+              <StatCard label="Outstanding Loans" value={formatPKR(stats.totalOutstandingLoans)} icon={HandCoins} hint="Borrowed, not yet repaid" variant="amber" href="/loans" />
             </div>
           </div>
 
@@ -199,8 +211,8 @@ export default async function DashboardPage() {
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-400 mb-3">Capital Distribution</h3>
             <div className="space-y-4">
-              <StatCard label="Total Capital Investors" value={String(stats.totalInvestors)} icon={Landmark} variant="violet" />
-              <StatCard label="Active Investment" value={formatPKR(stats.activePhaseInvestmentTotal)} icon={Landmark} hint={activePhase ? activePhase.phaseName : "No active cycle"} variant="slate" />
+              <StatCard label="Total Capital Investors" value={String(stats.totalInvestors)} icon={Landmark} variant="violet" href="/investors" />
+              <StatCard label="Active Investment" value={formatPKR(stats.activePhaseInvestmentTotal)} icon={Landmark} hint={activePhase ? activePhase.phaseName : "No active cycle"} variant="slate" href={activePhase ? `/phases/${activePhase.id}` : "/phases"} />
             </div>
           </div>
 
@@ -212,26 +224,26 @@ export default async function DashboardPage() {
             <CardContent className="p-6 space-y-6">
               
               {/* Yield Stat Item 1 */}
-              <div className="flex justify-between items-center">
+              <Link href="/contracts?status=COMPLETED" className="flex justify-between items-center group/yield">
                 <div>
-                  <p className="text-xs font-bold text-slate-400">Gross Profits Generated</p>
+                  <p className="text-xs font-bold text-slate-400 group-hover/yield:text-slate-500 transition-colors">Gross Profits Generated</p>
                   <p className="text-xl font-black text-emerald-600 mt-1">{formatPKR(stats.totalProfitGenerated)}</p>
                 </div>
-                <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center transition-transform group-hover/yield:scale-105">
                   <TrendingUp className="h-4 w-4 stroke-[2.5]" />
                 </div>
-              </div>
+              </Link>
 
               {/* Yield Stat Item 2 */}
-              <div className="flex justify-between items-center">
+              <Link href="/distributions" className="flex justify-between items-center group/yield">
                 <div>
-                  <p className="text-xs font-bold text-slate-400">Profit Distributed</p>
+                  <p className="text-xs font-bold text-slate-400 group-hover/yield:text-slate-500 transition-colors">Profit Distributed</p>
                   <p className="text-xl font-black text-amber-600 mt-1">{formatPKR(stats.totalProfitDistributed)}</p>
                 </div>
-                <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center transition-transform group-hover/yield:scale-105">
                   <Coins className="h-4 w-4 stroke-[2.5]" />
                 </div>
-              </div>
+              </Link>
 
               {/* Functional Dynamic Progress Component */}
               <div className="space-y-2 pt-2 border-t border-slate-100">

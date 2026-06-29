@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Landmark } from "lucide-react";
+import { Plus, Landmark, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,7 @@ export default async function InvestorsPage() {
                   <TableHead>Total Invested</TableHead>
                   <TableHead>Total Distributed</TableHead>
                   <TableHead>Available Balance</TableHead>
+                  <TableHead className="text-right">Withdrawals</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -82,6 +83,14 @@ export default async function InvestorsPage() {
                     </TableCell>
                     <TableCell className="tabular-nums font-semibold">
                       {formatPKR(investor.availableBalance)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/investors/${investor.id}#withdrawals`}>
+                          <History className="h-3.5 w-3.5" />
+                          History
+                        </Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

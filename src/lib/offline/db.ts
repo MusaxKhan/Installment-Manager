@@ -28,6 +28,10 @@ export interface CachedClient {
   isDeleted: boolean;
   updatedAt: string;
   syncVersion: number;
+  /** Longest overdue streak (months) across this client's contracts,
+   * computed server-side at snapshot time — see getOfflineSnapshot(). */
+  maxOverdueMonths: number;
+  isBlacklisted: boolean;
 }
 
 export interface CachedContract {

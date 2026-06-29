@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCashInHand } from "./cash-ledger-service";
+import { getTotalOutstandingLoans } from "./loan-service";
 import type { DashboardStats } from "@/types/domain";
 
 export class DashboardServiceError extends Error {}
@@ -9,12 +11,15 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const [
     activeContractsRes,
     overdueContractsRes,
+    completedContractsRes,
     clientsRes,
     investorsRes,
     contractsRes,
-    completedContractsRes,
+    completedContractsProfitRes,
     distributionsRes,
     activePhaseRes,
+    cashInHand,
+    totalOutstandingLoans,
   ] = await Promise.all([
     supabase
       .from("contracts")
@@ -24,6 +29,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .from("contracts")
       .select("id", { count: "exact", head: true })
       .eq("status", "OVERDUE"),
+    supabase
+      .from("contracts")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "COMPLETED"),
     supabase
       .from("clients")
       .select("id", { count: "exact", head: true })
@@ -45,15 +54,18 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .order("start_date", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    getCashInHand(),
+    getTotalOutstandingLoans(),
   ]);
 
   const firstError = [
     activeContractsRes,
     overdueContractsRes,
+    completedContractsRes,
     clientsRes,
     investorsRes,
     contractsRes,
-    completedContractsRes,
+    completedContractsProfitRes,
     distributionsRes,
     activePhaseRes,
   ].find((r) => r.error)?.error;
@@ -69,7 +81,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     0
   );
 
-  const totalProfitGenerated = (completedContractsRes.data ?? []).reduce(
+  const totalProfitGenerated = (completedContractsProfitRes.data ?? []).reduce(
     (sum, c) => sum + Number(c.profit_amount),
     0
   );
@@ -107,5 +119,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     totalProfitGenerated,
     totalProfitDistributed,
     activePhaseInvestmentTotal,
+    cashInHand,
+    totalOutstandingLoans,
+    totalCompletedContracts: completedContractsRes.count ?? 0,
   };
 }

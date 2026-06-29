@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { writeCashLedgerEntry } from "./cash-ledger-service";
 import type { ContractRow } from "@/types/database";
 import {
   mapClient,
@@ -374,6 +375,18 @@ export async function createContractRecord(
       `Failed to generate installment schedule: ${installmentError.message}`
     );
   }
+
+  // Cash-out: the purchase price leaves cash-in-hand the moment a
+  // contract is created. Written only after the contract AND its
+  // installment schedule both succeeded — a rolled-back contract
+  // never happened, so it should never touch the ledger.
+  await writeCashLedgerEntry(supabase, {
+    entryType: "purchase",
+    amount: -values.purchasePrice,
+    contractId: contractRow.id,
+    entryDate: values.startDate,
+    description: `Purchase for contract ${contractRow.contract_code}`,
+  });
 
   return mapContract(contractRow);
 }
