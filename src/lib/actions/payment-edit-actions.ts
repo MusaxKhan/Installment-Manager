@@ -42,5 +42,11 @@ export async function editPaymentAction(
 
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath("/payments");
+  // These all read cash_ledger / getCashInHand() / getDashboardStats(),
+  // which editPaymentAmount() now keeps in sync — but the pages still need
+  // revalidating or Next's cache will keep serving the pre-edit numbers.
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   return { success: true };
 }

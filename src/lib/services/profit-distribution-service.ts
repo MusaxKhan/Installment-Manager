@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapProfitDistribution } from "./mappers";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 import type {
   ProfitDistribution,
   ProfitDistributionWithDetails,
@@ -16,9 +18,10 @@ export class ProfitDistributionServiceError extends Error {}
  * atomic transaction rather than several sequential client calls.
  */
 export async function distributeContractProfit(
-  contractId: number
+  contractId: number,
+  injectedClient?: SupabaseClient<Database>
 ): Promise<ProfitDistribution[]> {
-  const supabase = await createClient();
+  const supabase = injectedClient ?? (await createClient());
 
   const { data, error } = await supabase.rpc("distribute_contract_profit", {
     p_contract_id: contractId,

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/recompute-statuses",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

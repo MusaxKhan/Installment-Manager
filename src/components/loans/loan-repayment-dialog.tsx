@@ -43,13 +43,20 @@ function SubmitButton({ isOnline }: { isOnline: boolean }) {
 export function LoanRepaymentDialog({
   loanId,
   outstandingBalance,
+  cashInHand,
 }: {
   loanId: number;
   outstandingBalance: number;
+  /** Current cash in hand — a repayment can never exceed this, regardless
+   * of how much is still owed on the loan itself (enforced server-side
+   * in record_loan_repayment, this just gives the person a heads-up
+   * before they try and get rejected). */
+  cashInHand: number;
 }) {
   const router = useRouter();
   const { isOnline } = useOnlineStatus();
   const [open, setOpen] = React.useState(false);
+  const maxRepayable = Math.min(outstandingBalance, cashInHand);
 
   const boundAction = React.useCallback(
     (prev: ActionResult | null, formData: FormData) =>
@@ -89,6 +96,8 @@ export function LoanRepaymentDialog({
           <DialogTitle>Record Loan Repayment</DialogTitle>
           <DialogDescription>
             Outstanding balance: <strong>{formatPKR(outstandingBalance)}</strong>
+            {" · "}
+            Cash in hand: <strong>{formatPKR(cashInHand)}</strong>
           </DialogDescription>
         </DialogHeader>
 
@@ -97,6 +106,13 @@ export function LoanRepaymentDialog({
             <WifiOff className="h-3.5 w-3.5" />
             {OFFLINE_BLOCKED_MESSAGE.record_loan_repayment}
           </Badge>
+        )}
+
+        {isOnline && cashInHand < outstandingBalance && (
+          <p className="rounded-md bg-status-partial-bg px-3 py-2 text-sm text-status-partial">
+            Cash in hand is lower than the outstanding loan balance — you
+            can repay up to {formatPKR(cashInHand)} right now.
+          </p>
         )}
 
         <form action={formAction} className="space-y-4">
@@ -108,7 +124,7 @@ export function LoanRepaymentDialog({
               type="number"
               min="0.01"
               step="0.01"
-              max={outstandingBalance}
+              max={maxRepayable}
               required
               autoFocus
             />

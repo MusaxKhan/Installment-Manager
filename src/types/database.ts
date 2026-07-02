@@ -181,6 +181,7 @@ export type CashLedgerEntryRow = {
   investment_id: number | null;
   loan_id: number | null;
   withdrawal_id: number | null;
+  payment_id: number | null;
   description: string | null;
   entry_date: string;
   created_at: string;
@@ -404,6 +405,13 @@ export interface Database {
             columns: ["withdrawal_id"];
             isOneToOne: false;
             referencedRelation: "withdrawals";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_ledger_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
             referencedColumns: ["id"];
           }
         ];

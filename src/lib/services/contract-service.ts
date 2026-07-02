@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { writeCashLedgerEntry } from "./cash-ledger-service";
-import type { ContractRow } from "@/types/database";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ContractRow, Database } from "@/types/database";
 import {
   mapClient,
   mapContract,
@@ -161,7 +162,7 @@ export async function updateContractRecord(
   }
 }
 async function getNextContractCode(
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: SupabaseClient<Database>
 ): Promise<string> {
   const { data, error } = await supabase.rpc("next_contract_code");
   if (error || !data) {
@@ -405,9 +406,10 @@ export async function createContractRecord(
  * rather than silently swallowed.
  */
 export async function recomputeContractStatus(
-  contractId: number
+  contractId: number,
+  injectedClient?: SupabaseClient<Database>
 ): Promise<{ distributionWarning: string | null }> {
-  const supabase = await createClient();
+  const supabase = injectedClient ?? (await createClient());
 
   const { data: installments, error } = await supabase
     .from("installments")
@@ -485,7 +487,7 @@ export async function recomputeContractStatus(
     const { distributeContractProfit } = await import(
       "./profit-distribution-service"
     );
-    await distributeContractProfit(contractId);
+    await distributeContractProfit(contractId, supabase);
     return { distributionWarning: null };
   } catch (distributionError) {
     const message =
@@ -496,4 +498,56 @@ export async function recomputeContractStatus(
       distributionWarning: `Contract completed, but profit could not be distributed automatically: ${message}`,
     };
   }
+}
+
+/**
+ * Sweeps every ACTIVE/OVERDUE contract and recomputes its status.
+ *
+ * Why this exists: recomputeContractStatus() only ever ran as a
+ * side-effect of recording or editing a payment. That's fine for
+ * contracts someone is actively paying, but a contract that receives
+ * NO payments at all (or goes quiet for a stretch) never got its
+ * overdue_months touched again after creation — nothing else in the
+ * app calls recomputeContractStatus purely because a calendar month
+ * passed. Overdue detection and blacklist status (which reads
+ * overdue_months) would silently stay wrong for exactly that case.
+ *
+ * Intended to be called on a schedule (see /api/cron/recompute-statuses)
+ * so overdue status stays correct even for contracts nobody has
+ * touched recently. Takes an injected client so it can run under a
+ * service-role/cron context without a user session (see
+ * lib/supabase/admin.ts) — the RLS policies on `contracts` and
+ * `installments` require an authenticated staff session, which a cron
+ * invocation doesn't have.
+ */
+export async function recomputeAllContractStatuses(
+  injectedClient?: SupabaseClient<Database>
+): Promise<{ checked: number; errors: { contractId: number; message: string }[] }> {
+  const supabase = injectedClient ?? (await createClient());
+
+  const { data: contracts, error } = await supabase
+    .from("contracts")
+    .select("id")
+    .in("status", ["ACTIVE", "OVERDUE"]);
+
+  if (error) {
+    throw new ContractServiceError(
+      `Failed to list contracts for status sweep: ${error.message}`
+    );
+  }
+
+  const errors: { contractId: number; message: string }[] = [];
+
+  for (const contract of contracts ?? []) {
+    try {
+      await recomputeContractStatus(contract.id, supabase);
+    } catch (err) {
+      errors.push({
+        contractId: contract.id,
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }
+
+  return { checked: (contracts ?? []).length, errors };
 }

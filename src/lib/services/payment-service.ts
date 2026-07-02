@@ -2,7 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { mapPayment, mapPaymentEdit } from "./mappers";
 import { allocatePayment, round2 } from "@/lib/utils/calculations";
 import { recomputeContractStatus } from "./contract-service";
-import { writeCashLedgerEntry } from "./cash-ledger-service";
+import {
+  writeCashLedgerEntry,
+  syncCashLedgerForPaymentEdit,
+} from "./cash-ledger-service";
 import type { Payment, PaymentWithEdits } from "@/types/domain";
 import type {
   PaymentFormValues,
@@ -130,6 +133,7 @@ export async function recordPayment(
     entryType: "payment_received",
     amount: values.amountPaid,
     contractId: values.contractId,
+    paymentId: paymentRow.id,
     entryDate: values.paymentDate,
     description: `Payment received for contract #${values.contractId}`,
   });
@@ -387,7 +391,9 @@ export async function editPaymentAmount(
 
   const { data: payment, error: fetchError } = await supabase
     .from("payments")
-    .select("id, amount_paid, contract_id, contract:contracts(profit_distributed)")
+    .select(
+      "id, amount_paid, contract_id, payment_date, contract:contracts(profit_distributed)"
+    )
     .eq("id", values.paymentId)
     .single();
 
@@ -426,6 +432,27 @@ export async function editPaymentAmount(
   if (updateError) {
     throw new PaymentServiceError(
       `Audit log was written but payment update failed — please review payment #${values.paymentId} manually: ${updateError.message}`
+    );
+  }
+
+  // Keep cash-in-hand (and everything derived from it — dashboard, cash
+  // ledger page, graphs) in sync with the new amount. The payment row and
+  // audit log are already committed at this point; if this fails, the
+  // caller still needs to know, because otherwise the app looks fine while
+  // cash-in-hand is silently wrong.
+  try {
+    await syncCashLedgerForPaymentEdit(supabase, {
+      paymentId: values.paymentId,
+      contractId: payment.contract_id,
+      entryDate: payment.payment_date,
+      oldAmount,
+      newAmount,
+    });
+  } catch (err) {
+    throw new PaymentServiceError(
+      err instanceof Error
+        ? `Payment #${values.paymentId} amount was updated, but cash-in-hand could not be synced: ${err.message}`
+        : `Payment #${values.paymentId} amount was updated, but cash-in-hand could not be synced.`
     );
   }
 

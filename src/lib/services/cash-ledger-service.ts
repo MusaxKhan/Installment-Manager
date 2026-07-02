@@ -21,6 +21,7 @@ export interface CashLedgerEntry {
   investmentId: number | null;
   loanId: number | null;
   withdrawalId: number | null;
+  paymentId: number | null;
   description: string | null;
   entryDate: string;
   createdAt: string;
@@ -47,6 +48,7 @@ export async function writeCashLedgerEntry(
     investmentId?: number;
     loanId?: number;
     withdrawalId?: number;
+    paymentId?: number;
     description?: string;
     entryDate?: string;
   }
@@ -59,6 +61,7 @@ export async function writeCashLedgerEntry(
     investment_id: entry.investmentId ?? null,
     loan_id: entry.loanId ?? null,
     withdrawal_id: entry.withdrawalId ?? null,
+    payment_id: entry.paymentId ?? null,
     description: entry.description ?? null,
     entry_date: entry.entryDate ?? new Date().toISOString().split("T")[0],
   });
@@ -109,8 +112,107 @@ export async function listCashLedgerEntries(params?: {
     investmentId: row.investment_id,
     loanId: row.loan_id,
     withdrawalId: row.withdrawal_id,
+    paymentId: row.payment_id,
     description: row.description,
     entryDate: row.entry_date,
     createdAt: row.created_at,
   }));
+}
+
+/**
+ * Keeps the cash_ledger row created for a payment in sync when that
+ * payment's amount is edited after the fact (see editPaymentAmount in
+ * payment-service.ts). Cash-in-hand, the dashboard, the cash ledger page,
+ * and the graphs page are all derived from cash_ledger, so if this isn't
+ * called on every payment edit those views silently keep showing the
+ * pre-edit amount forever even though the payment itself shows the new one.
+ *
+ * Resolution order:
+ *  1. Look up the ledger row directly via payment_id (the normal case for
+ *     any payment recorded after migration 004).
+ *  2. Fall back to matching an un-linked legacy row by contract + date +
+ *     the payment's amount *before* this edit, and link it going forward.
+ *     Only acts if the match is unambiguous.
+ *  3. If neither resolves, throw rather than guess — silently corrupting
+ *     cash-in-hand is worse than a clear error asking for manual review.
+ */
+export async function syncCashLedgerForPaymentEdit(
+  supabase: SupabaseClient<Database>,
+  params: {
+    paymentId: number;
+    contractId: number;
+    entryDate: string;
+    oldAmount: number;
+    newAmount: number;
+  }
+): Promise<void> {
+  const { paymentId, contractId, entryDate, oldAmount, newAmount } = params;
+
+  const { data: linkedRows, error: linkedError } = await supabase
+    .from("cash_ledger")
+    .select("id")
+    .eq("payment_id", paymentId)
+    .eq("entry_type", "payment_received");
+
+  if (linkedError) {
+    throw new CashLedgerServiceError(
+      `Failed to look up cash ledger entry for payment #${paymentId}: ${linkedError.message}`
+    );
+  }
+
+  if (linkedRows && linkedRows.length === 1) {
+    const { error: updateError } = await supabase
+      .from("cash_ledger")
+      .update({ amount: newAmount })
+      .eq("id", linkedRows[0].id);
+
+    if (updateError) {
+      throw new CashLedgerServiceError(
+        `Payment #${paymentId} was updated but its cash ledger entry could not be synced: ${updateError.message}`
+      );
+    }
+    return;
+  }
+
+  if (linkedRows && linkedRows.length > 1) {
+    throw new CashLedgerServiceError(
+      `Payment #${paymentId} has more than one linked cash ledger entry — refusing to guess which to update. Please reconcile cash_ledger manually.`
+    );
+  }
+
+  // No linked row (legacy data from before migration 004). Try an
+  // unambiguous fallback match on the un-linked candidates.
+  const { data: candidates, error: candidatesError } = await supabase
+    .from("cash_ledger")
+    .select("id")
+    .is("payment_id", null)
+    .eq("entry_type", "payment_received")
+    .eq("contract_id", contractId)
+    .eq("entry_date", entryDate)
+    .eq("amount", oldAmount);
+
+  if (candidatesError) {
+    throw new CashLedgerServiceError(
+      `Failed to look up legacy cash ledger entry for payment #${paymentId}: ${candidatesError.message}`
+    );
+  }
+
+  if (!candidates || candidates.length !== 1) {
+    throw new CashLedgerServiceError(
+      candidates && candidates.length > 1
+        ? `Payment #${paymentId}'s amount was updated, but ${candidates.length} matching legacy cash ledger entries were found — cash-in-hand could not be safely synced. Please reconcile cash_ledger manually for contract #${contractId}.`
+        : `Payment #${paymentId}'s amount was updated, but no matching cash ledger entry was found — cash-in-hand could not be synced. Please reconcile cash_ledger manually for contract #${contractId}.`
+    );
+  }
+
+  const { error: linkUpdateError } = await supabase
+    .from("cash_ledger")
+    .update({ amount: newAmount, payment_id: paymentId })
+    .eq("id", candidates[0].id);
+
+  if (linkUpdateError) {
+    throw new CashLedgerServiceError(
+      `Payment #${paymentId} was updated but its legacy cash ledger entry could not be synced: ${linkUpdateError.message}`
+    );
+  }
 }
