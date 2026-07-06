@@ -127,7 +127,7 @@ export default async function DashboardPage() {
               <StatCard label="Critical Overdue Contracts" value={String(stats.totalOverdueContracts)} icon={AlertTriangle} variant="rose" href="/contracts?status=OVERDUE" />
               <StatCard label="Completed Contracts" value={String(stats.totalCompletedContracts)} icon={CheckCircle2} variant="emerald" href="/contracts?status=COMPLETED" />
               <StatCard label="Cash in Hand" value={formatPKR(stats.cashInHand)} icon={Wallet} hint="Available for next purchases" variant="emerald" href="/cash-ledger" />
-              <StatCard label="Outstanding Loans" value={formatPKR(stats.totalOutstandingLoans)} icon={HandCoins} hint="Borrowed, not yet repaid" variant="amber" href="/loans" />
+              <StatCard label="Loan Taken" value={formatPKR(stats.totalOutstandingLoans)} icon={HandCoins} hint="Borrowed, not yet repaid" variant="amber" href="/loans" />
             </div>
           </div>
 

@@ -2,7 +2,47 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import { createClient } from "@/lib/supabase/server";
+import { buildExportFilename } from "@/lib/utils/export-filename";
 import type { ContractStatus } from "@/types/database";
+
+type ReportType = "FULL" | "COLLECTIONS" | "INVESTORS" | "PHASE";
+
+// Which sheets each report type includes. "Full Backup" is the only one
+// that also includes admin/account data (User Profiles) — the other
+// report types are scoped to what their name promises, so a
+// "Collections Report" doesn't quietly also contain investor
+// withdrawals, and an "Investor Report" doesn't contain client CNICs.
+const REPORT_SHEETS: Record<ReportType, string[]> = {
+  FULL: [
+    "Clients",
+    "Contracts",
+    "Installments",
+    "Payments",
+    "Payment Edits",
+    "Investors",
+    "Business Phases",
+    "Phase Investments",
+    "Profit Distributions",
+    "Withdrawals",
+    "User Profiles",
+  ],
+  COLLECTIONS: ["Clients", "Contracts", "Installments", "Payments", "Payment Edits"],
+  INVESTORS: [
+    "Investors",
+    "Business Phases",
+    "Phase Investments",
+    "Profit Distributions",
+    "Withdrawals",
+  ],
+  PHASE: [
+    "Business Phases",
+    "Contracts",
+    "Installments",
+    "Payments",
+    "Phase Investments",
+    "Profit Distributions",
+  ],
+};
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -13,6 +53,25 @@ export async function GET(request: Request) {
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const status = searchParams.get("status");
+  const reportTypeParam = searchParams.get("reportType");
+  const reportType: ReportType =
+    reportTypeParam && reportTypeParam in REPORT_SHEETS
+      ? (reportTypeParam as ReportType)
+      : "FULL";
+
+  const includeSheet = (name: string) => REPORT_SHEETS[reportType].includes(name);
+
+  const hasActiveFilter = Boolean(
+    (phaseId && phaseId !== "all") || (status && status !== "all") || from || to
+  );
+  // A "Full Backup" with no filters at all should be a literal, complete
+  // dump — every client/installment/payment, even ones with no bearing
+  // on any contract in view. The moment either a report type narrows
+  // things (anything but FULL) or an explicit filter is chosen, every
+  // included sheet gets scoped to the same contract set so the export
+  // is internally consistent (previously Contracts respected filters
+  // but Installments/Payments/Clients silently didn't).
+  const shouldScopeToContracts = reportType !== "FULL" || hasActiveFilter;
 
   // ----------------------------
   // Contracts Query
@@ -59,12 +118,67 @@ export async function GET(request: Request) {
     );
   }
 
+  const needsContracts =
+    includeSheet("Contracts") ||
+    includeSheet("Installments") ||
+    includeSheet("Payments") ||
+    includeSheet("Payment Edits") ||
+    includeSheet("Clients");
+
+  const contracts = needsContracts
+    ? await contractsQuery
+    : { data: [], error: null };
+
+  const contractIds = (contracts.data ?? []).map((c) => c.id);
+
+  // Installments / Payments: scoped to the filtered contract set once
+  // any narrowing is active; otherwise (true Full Backup) unfiltered.
+  let installmentsQuery = supabase.from("installments").select("*");
+  if (shouldScopeToContracts) {
+    installmentsQuery = installmentsQuery.in(
+      "contract_id",
+      contractIds.length > 0 ? contractIds : [-1]
+    );
+  }
+
+  let paymentsQuery = supabase.from("payments").select(`
+        *,
+        contracts (
+        contract_code
+        )
+    `);
+  if (shouldScopeToContracts) {
+    paymentsQuery = paymentsQuery.in(
+      "contract_id",
+      contractIds.length > 0 ? contractIds : [-1]
+    );
+  }
+
+  // Clients: scoped to clients who appear in the filtered contract set
+  // (dedup'd) once narrowing is active; otherwise every client on file.
+  const clientIds = shouldScopeToContracts
+    ? Array.from(new Set((contracts.data ?? []).map((c) => c.client_id)))
+    : null;
+  let clientsQuery = supabase.from("clients").select("*");
+  if (clientIds) {
+    clientsQuery = clientsQuery.in("id", clientIds.length > 0 ? clientIds : [-1]);
+  }
+
+  // Business Phases / Phase Investments / Profit Distributions: scoped
+  // to the chosen phase, when one is chosen.
+  let phasesQuery = supabase.from("business_phases").select("*");
+  let investmentsQuery = supabase.from("investor_phase_investments").select("*");
+  let distributionsQuery = supabase.from("profit_distributions").select("*");
+  if (phaseId && phaseId !== "all") {
+    phasesQuery = phasesQuery.eq("id", Number(phaseId));
+    investmentsQuery = investmentsQuery.eq("phase_id", Number(phaseId));
+    distributionsQuery = distributionsQuery.eq("phase_id", Number(phaseId));
+  }
+
   const [
     clients,
-    contracts,
     installments,
     payments,
-    paymentEdits,
     investors,
     phases,
     investments,
@@ -72,25 +186,42 @@ export async function GET(request: Request) {
     withdrawals,
     users,
   ] = await Promise.all([
-    supabase.from("clients").select("*"),
-    contractsQuery,
-    supabase.from("installments").select("*"),
-    supabase
-    .from("payments")
-    .select(`
-        *,
-        contracts (
-        contract_code
-        )
-    `),
-    supabase.from("payment_edits").select("*"),
-    supabase.from("investors").select("*"),
-    supabase.from("business_phases").select("*"),
-    supabase.from("investor_phase_investments").select("*"),
-    supabase.from("profit_distributions").select("*"),
-    supabase.from("withdrawals").select("*"),
-    supabase.from("user_profiles").select("*"),
+    includeSheet("Clients") ? clientsQuery : Promise.resolve({ data: [], error: null }),
+    includeSheet("Installments")
+      ? installmentsQuery
+      : Promise.resolve({ data: [], error: null }),
+    includeSheet("Payments") ? paymentsQuery : Promise.resolve({ data: [], error: null }),
+    includeSheet("Investors")
+      ? supabase.from("investors").select("*")
+      : Promise.resolve({ data: [], error: null }),
+    includeSheet("Business Phases")
+      ? phasesQuery
+      : Promise.resolve({ data: [], error: null }),
+    includeSheet("Phase Investments")
+      ? investmentsQuery
+      : Promise.resolve({ data: [], error: null }),
+    includeSheet("Profit Distributions")
+      ? distributionsQuery
+      : Promise.resolve({ data: [], error: null }),
+    includeSheet("Withdrawals")
+      ? supabase.from("withdrawals").select("*")
+      : Promise.resolve({ data: [], error: null }),
+    includeSheet("User Profiles")
+      ? supabase.from("user_profiles").select("*")
+      : Promise.resolve({ data: [], error: null }),
   ]);
+
+  // Payment Edits: scoped to the payments actually included above.
+  let paymentEdits: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+  if (includeSheet("Payment Edits")) {
+    const paymentIds = (payments.data ?? []).map((p: { id: number }) => p.id);
+    paymentEdits = shouldScopeToContracts
+      ? await supabase
+          .from("payment_edits")
+          .select("*")
+          .in("payment_id", paymentIds.length > 0 ? paymentIds : [-1])
+      : await supabase.from("payment_edits").select("*");
+  }
 
   const workbook = XLSX.utils.book_new();
 
@@ -99,6 +230,10 @@ export async function GET(request: Request) {
   // ----------------------------
 
   const summaryData = [
+  {
+    Metric: "Report Type",
+    Value: reportType,
+  },
   {
     Metric: "Generated At",
     Value: new Date().toLocaleString(),
@@ -158,6 +293,7 @@ export async function GET(request: Request) {
     name: string,
     data: unknown[]
   ) => {
+    if (!includeSheet(name)) return;
     const worksheet =
       XLSX.utils.json_to_sheet(data ?? []);
 
@@ -260,19 +396,13 @@ export async function GET(request: Request) {
     bookType: "xlsx",
   });
 
-  const today =
-    new Date().toISOString().split("T")[0];
-
-  let fileName =
-    `Sitara-Traders-Export-${today}.xlsx`;
-
-  if (
-    phaseId &&
-    phaseId !== "all"
-  ) {
-    fileName =
-      `Sitara-Traders-Phase-${phaseId}-${today}.xlsx`;
-  }
+  const fileName = buildExportFilename({
+    reportType,
+    status,
+    phaseLabel: phaseId && phaseId !== "all" ? `Phase${phaseId}` : null,
+    from,
+    to,
+  });
 
   return new NextResponse(buffer, {
     headers: {

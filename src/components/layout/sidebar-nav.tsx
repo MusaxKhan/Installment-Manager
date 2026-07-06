@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -8,7 +9,6 @@ import {
   FileText,
   Wallet,
   UserCog,
-  Landmark,
   PiggyBank,
   CalendarRange,
   Coins,
@@ -114,9 +114,14 @@ export function SidebarNav({ role }: { role: UserRole }) {
 export function SidebarBrand() {
   return (
     <div className="flex items-center gap-2 px-4 py-5">
-      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <Landmark className="h-4 w-4" />
-      </div>
+      <Image
+        src="/icons/icon-192.png"
+        alt="Sitara Traders logo"
+        width={32}
+        height={32}
+        className="h-8 w-8 shrink-0 rounded-md"
+        priority
+      />
       <div>
         <p className="text-sm font-semibold leading-none text-foreground">
           Sitara Traders

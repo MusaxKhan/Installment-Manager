@@ -40,7 +40,7 @@ export default async function WithdrawalsPage() {
                   <TableHead>Date</TableHead>
                   <TableHead>Investor</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Remaining Balance</TableHead>
+                  <TableHead>Remaining Profit</TableHead>
                   <TableHead>Reason</TableHead>
                 </TableRow>
               </TableHeader>

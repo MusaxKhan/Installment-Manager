@@ -28,7 +28,7 @@ export function WithdrawalHistoryTable({
         <TableRow>
           <TableHead>Date</TableHead>
           <TableHead>Amount</TableHead>
-          <TableHead>Remaining Balance</TableHead>
+          <TableHead>Remaining Profit</TableHead>
           <TableHead>Reason</TableHead>
         </TableRow>
       </TableHeader>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { buildExportFilename } from "@/lib/utils/export-filename";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,11 @@ export function ExportDialog({
   const [open, setOpen] = useState(false);
   
   const handleExport = async () => {
+  if (fromDate && toDate && fromDate > toDate) {
+    alert("The 'From Date' is after the 'To Date' — please fix the range before exporting.");
+    return;
+  }
+
   try {
     setIsExporting(true);
 
@@ -82,13 +88,18 @@ export function ExportDialog({
 
     a.href = url;
 
-    const today =
-      new Date()
-        .toISOString()
-        .split("T")[0];
+    const phaseLabel =
+      phaseId !== "all"
+        ? phases.find((p) => String(p.id) === phaseId)?.phaseName ?? phaseId
+        : null;
 
-    a.download =
-      `Sitara-Traders-${today}.xlsx`;
+    a.download = buildExportFilename({
+      reportType,
+      status,
+      phaseLabel,
+      from: fromDate,
+      to: toDate,
+    });
 
     document.body.appendChild(a);
 

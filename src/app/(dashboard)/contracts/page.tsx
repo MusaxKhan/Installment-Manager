@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus, FileText, WifiOff } from "lucide-react";
+import { Plus, FileText, WifiOff, Printer, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +61,37 @@ export default function ContractsPage() {
   const [onlineContracts, setOnlineContracts] =
     React.useState<ContractWithClient[] | null>(null);
   const [isLoadingOnline, setIsLoadingOnline] = React.useState(false);
+  const [isExporting, setIsExporting] = React.useState(false);
+
+  const handlePrint = async () => {
+    setIsExporting(true);
+    try {
+      const params = validStatus ? `?status=${validStatus}` : "";
+      const response = await fetch(`/api/export/contracts${params}`);
+      if (!response.ok) {
+        throw new Error("Export failed");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="(.+)"/);
+      const fileName = match?.[1] ?? "Sitara-Traders-Contracts.xlsx";
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.alert(
+        "Could not generate the Excel export. Please check your connection and try again."
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   React.useEffect(() => {
     if (!isOnline) return;
@@ -123,12 +154,27 @@ export default function ContractsPage() {
             {rows.length} {rows.length === 1 ? "contract" : "contracts"}
           </p>
         </div>
-        <Button asChild>
-          <Link href="/contracts/new">
-            <Plus className="h-4 w-4" />
-            New Contract
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handlePrint}
+            disabled={isExporting || !isOnline || rows.length === 0}
+            title={!isOnline ? "Requires an internet connection" : undefined}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            Print
+          </Button>
+          <Button asChild>
+            <Link href="/contracts/new">
+              <Plus className="h-4 w-4" />
+              New Contract
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {!isOnline && (

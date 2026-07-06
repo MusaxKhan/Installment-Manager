@@ -54,8 +54,9 @@ export default async function InvestorsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Total Invested</TableHead>
-                  <TableHead>Total Distributed</TableHead>
-                  <TableHead>Available Balance</TableHead>
+                  <TableHead>Total Profit</TableHead>
+                  <TableHead>Total Withdrawn</TableHead>
+                  <TableHead>Available Profit</TableHead>
                   <TableHead className="text-right">Withdrawals</TableHead>
                 </TableRow>
               </TableHeader>
@@ -80,6 +81,9 @@ export default async function InvestorsPage() {
                     </TableCell>
                     <TableCell className="tabular-nums text-status-completed">
                       {formatPKR(investor.totalDistributed)}
+                    </TableCell>
+                    <TableCell className="tabular-nums text-status-overdue">
+                      {formatPKR(investor.totalWithdrawn)}
                     </TableCell>
                     <TableCell className="tabular-nums font-semibold">
                       {formatPKR(investor.availableBalance)}

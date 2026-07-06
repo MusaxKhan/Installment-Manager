@@ -84,7 +84,7 @@ export default async function CashLedgerPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Balance After</TableHead>
+                  <TableHead>Cash in Hand</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
