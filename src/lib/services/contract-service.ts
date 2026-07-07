@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { writeCashLedgerEntry } from "./cash-ledger-service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ContractRow, Database } from "@/types/database";
@@ -179,28 +180,25 @@ export async function listContracts(params?: {
 }): Promise<ContractWithClient[]> {
   const supabase = await createClient();
 
-  let query = supabase
-    .from("contracts")
-    .select("*, client:clients(id, client_code, name, phone)");
+  const data = await fetchAllRows((from, to) => {
+    let query = supabase
+      .from("contracts")
+      .select("*, client:clients(id, client_code, name, phone)");
 
-  if (params?.status) {
-    query = query.eq("status", params.status);
-  }
-  if (params?.search && params.search.trim().length > 0) {
-    const term = params.search.trim();
-    query = query.or(`contract_code.ilike.%${term}%,product_name.ilike.%${term}%`);
-  }
+    if (params?.status) {
+      query = query.eq("status", params.status);
+    }
+    if (params?.search && params.search.trim().length > 0) {
+      const term = params.search.trim();
+      query = query.or(`contract_code.ilike.%${term}%,product_name.ilike.%${term}%`);
+    }
 
-  query = query.order("created_at", { ascending: false });
+    return query.order("created_at", { ascending: false }).range(from, to);
+  }).catch((err) => {
+    throw new ContractServiceError(`Failed to list contracts: ${err.message}`);
+  });
 
-  const { data, error } = await query;
-  if (error) {
-    throw new ContractServiceError(
-      `Failed to list contracts: ${error.message}`
-    );
-  }
-
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({
     ...mapContract(row),
     client: {
       id: row.client.id,
@@ -525,20 +523,22 @@ export async function recomputeAllContractStatuses(
 ): Promise<{ checked: number; errors: { contractId: number; message: string }[] }> {
   const supabase = injectedClient ?? (await createClient());
 
-  const { data: contracts, error } = await supabase
-    .from("contracts")
-    .select("id")
-    .in("status", ["ACTIVE", "OVERDUE"]);
-
-  if (error) {
+  const contracts = await fetchAllRows((from, to) =>
+    supabase
+      .from("contracts")
+      .select("id")
+      .in("status", ["ACTIVE", "OVERDUE"])
+      .order("id")
+      .range(from, to)
+  ).catch((err) => {
     throw new ContractServiceError(
-      `Failed to list contracts for status sweep: ${error.message}`
+      `Failed to list contracts for status sweep: ${err.message}`
     );
-  }
+  });
 
   const errors: { contractId: number; message: string }[] = [];
 
-  for (const contract of contracts ?? []) {
+  for (const contract of contracts) {
     try {
       await recomputeContractStatus(contract.id, supabase);
     } catch (err) {
@@ -549,5 +549,5 @@ export async function recomputeAllContractStatuses(
     }
   }
 
-  return { checked: (contracts ?? []).length, errors };
+  return { checked: contracts.length, errors };
 }

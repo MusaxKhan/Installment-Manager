@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { getCashInHand } from "./cash-ledger-service";
 import { getTotalOutstandingLoans } from "./loan-service";
 import type { DashboardStats } from "@/types/domain";
@@ -14,9 +15,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     completedContractsRes,
     clientsRes,
     investorsRes,
-    contractsRes,
-    completedContractsProfitRes,
-    distributionsRes,
+    remainingBalanceRows,
+    completedContractsProfitRows,
+    distributionsRows,
     activePhaseRes,
     cashInHand,
     totalOutstandingLoans,
@@ -41,12 +42,28 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .from("investors")
       .select("id", { count: "exact", head: true })
       .eq("active", true),
-    supabase
-      .from("contracts")
-      .select("remaining_balance")
-      .in("status", ["ACTIVE", "OVERDUE"]),
-    supabase.from("contracts").select("profit_amount").eq("status", "COMPLETED"),
-    supabase.from("profit_distributions").select("profit_amount"),
+    // These four feed SUMs computed in JS below, so unlike the counts
+    // above they can't rely on a head:true count — they need every
+    // matching row, which means they need to be paginated around
+    // whatever max_rows is set to, or the totals silently understate
+    // reality once a table crosses that row count.
+    fetchAllRows<{ remaining_balance: number }>((from, to) =>
+      supabase
+        .from("contracts")
+        .select("remaining_balance")
+        .in("status", ["ACTIVE", "OVERDUE"])
+        .range(from, to)
+    ),
+    fetchAllRows<{ profit_amount: number }>((from, to) =>
+      supabase
+        .from("contracts")
+        .select("profit_amount")
+        .eq("status", "COMPLETED")
+        .range(from, to)
+    ),
+    fetchAllRows<{ profit_amount: number }>((from, to) =>
+      supabase.from("profit_distributions").select("profit_amount").range(from, to)
+    ),
     supabase
       .from("business_phases")
       .select("id")
@@ -64,9 +81,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     completedContractsRes,
     clientsRes,
     investorsRes,
-    contractsRes,
-    completedContractsProfitRes,
-    distributionsRes,
     activePhaseRes,
   ].find((r) => r.error)?.error;
 
@@ -76,35 +90,37 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     );
   }
 
-  const totalOutstandingAmount = (contractsRes.data ?? []).reduce(
+  const totalOutstandingAmount = remainingBalanceRows.reduce(
     (sum, c) => sum + Number(c.remaining_balance),
     0
   );
 
-  const totalProfitGenerated = (completedContractsProfitRes.data ?? []).reduce(
+  const totalProfitGenerated = completedContractsProfitRows.reduce(
     (sum, c) => sum + Number(c.profit_amount),
     0
   );
 
-  const totalProfitDistributed = (distributionsRes.data ?? []).reduce(
+  const totalProfitDistributed = distributionsRows.reduce(
     (sum, d) => sum + Number(d.profit_amount),
     0
   );
 
   let activePhaseInvestmentTotal = 0;
   if (activePhaseRes.data?.id) {
-    const { data: investments, error: investmentsError } = await supabase
-      .from("investor_phase_investments")
-      .select("investment_amount")
-      .eq("phase_id", activePhaseRes.data.id);
-
-    if (investmentsError) {
+    const investments = await fetchAllRows<{ investment_amount: number }>(
+      (from, to) =>
+        supabase
+          .from("investor_phase_investments")
+          .select("investment_amount")
+          .eq("phase_id", activePhaseRes.data!.id)
+          .range(from, to)
+    ).catch((err) => {
       throw new DashboardServiceError(
-        `Failed to load active phase investment total: ${investmentsError.message}`
+        `Failed to load active phase investment total: ${err.message}`
       );
-    }
+    });
 
-    activePhaseInvestmentTotal = (investments ?? []).reduce(
+    activePhaseInvestmentTotal = investments.reduce(
       (sum, i) => sum + Number(i.investment_amount),
       0
     );

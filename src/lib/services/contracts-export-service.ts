@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { ContractStatus, InstallmentStatus } from "@/types/database";
 
 export class ContractsExportServiceError extends Error {}
@@ -27,49 +28,96 @@ export interface ExportContract {
 }
 
 /**
- * Fetches everything the contracts Excel export needs in two queries
- * (contracts+client, then all their installments) rather than one
- * query per contract.
+ * Fetches everything the contracts Excel export needs in two rounds of
+ * queries (contracts+client, then all their installments) rather than
+ * one query per contract. Both are paginated via fetchAllRows — a bare
+ * .select() is silently capped at whatever the Supabase project's
+ * max_rows is set to, which would mean a "print all contracts" export
+ * quietly leaves contracts out past that row count with no error. The
+ * installment IDs are also chunked for the second query so a very
+ * large contract set doesn't build one oversized `.in()` filter.
  */
 export async function getContractsForExport(
   status?: ContractStatus
 ): Promise<ExportContract[]> {
   const supabase = await createClient();
 
-  let contractsQuery = supabase
-    .from("contracts")
-    .select(
-      "id, contract_code, start_date, purchase_price, total_price, profit_percent, remaining_balance, product_name, product_description, client:clients(name, client_code)"
-    )
-    .order("start_date", { ascending: true });
+  const contracts = await fetchAllRows<{
+    id: number;
+    contract_code: string;
+    start_date: string;
+    purchase_price: number;
+    total_price: number;
+    profit_percent: number;
+    remaining_balance: number;
+    product_name: string;
+    product_description: string | null;
+    client: { name: string; client_code: string };
+  }>((from, to) => {
+    let query = supabase
+      .from("contracts")
+      .select(
+        "id, contract_code, start_date, purchase_price, total_price, profit_percent, remaining_balance, product_name, product_description, client:clients(name, client_code)"
+      )
+      .order("start_date", { ascending: true });
 
-  if (status) {
-    contractsQuery = contractsQuery.eq("status", status);
-  }
+    if (status) {
+      query = query.eq("status", status);
+    }
 
-  const { data: contracts, error: contractsError } = await contractsQuery;
-  if (contractsError) {
+    return query.range(from, to);
+  }).catch((err) => {
     throw new ContractsExportServiceError(
-      `Failed to load contracts for export: ${contractsError.message}`
+      `Failed to load contracts for export: ${err.message}`
     );
-  }
-  if (!contracts || contracts.length === 0) return [];
+  });
+
+  if (contracts.length === 0) return [];
 
   const contractIds = contracts.map((c) => c.id);
-  const { data: installments, error: installmentsError } = await supabase
-    .from("installments")
-    .select("contract_id, installment_number, due_date, installment_amount, status")
-    .in("contract_id", contractIds)
-    .order("installment_number", { ascending: true });
 
-  if (installmentsError) {
+  // Chunk the IN(...) filter itself, independent of row-limit paging,
+  // so a very large contract set doesn't produce one oversized filter.
+  const CHUNK_SIZE = 500;
+  const idChunks: number[][] = [];
+  for (let i = 0; i < contractIds.length; i += CHUNK_SIZE) {
+    idChunks.push(contractIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  const installments: {
+    contract_id: number;
+    installment_number: number;
+    due_date: string;
+    installment_amount: number;
+    status: InstallmentStatus;
+  }[] = [];
+
+  try {
+    for (const chunk of idChunks) {
+      const chunkRows = await fetchAllRows<{
+        contract_id: number;
+        installment_number: number;
+        due_date: string;
+        installment_amount: number;
+        status: InstallmentStatus;
+      }>((from, to) =>
+        supabase
+          .from("installments")
+          .select("contract_id, installment_number, due_date, installment_amount, status")
+          .in("contract_id", chunk)
+          .order("installment_number", { ascending: true })
+          .range(from, to)
+      );
+      installments.push(...chunkRows);
+    }
+  } catch (err) {
     throw new ContractsExportServiceError(
-      `Failed to load installments for export: ${installmentsError.message}`
+      `Failed to load installments for export: ${err instanceof Error ? err.message : "Unknown error"}`
     );
   }
 
   const installmentsByContract = new Map<number, ExportInstallment[]>();
-  for (const inst of installments ?? []) {
+  for (const inst of installments) {
     const list = installmentsByContract.get(inst.contract_id) ?? [];
     list.push({
       installmentNumber: inst.installment_number,

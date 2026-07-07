@@ -1,22 +1,25 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { mapInvestor } from "./mappers";
 import { round2 } from "@/lib/utils/calculations";
 import type { Investor, InvestorWithBalance } from "@/types/domain";
 import type { InvestorFormValues } from "@/lib/validations/investor";
+import type { InvestorRow } from "@/types/database";
 
 export class InvestorServiceError extends Error {}
 
 export async function listInvestors(): Promise<Investor[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("investors")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw new InvestorServiceError(`Failed to list investors: ${error.message}`);
-  }
-  return (data ?? []).map(mapInvestor);
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from("investors")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, to)
+  ).catch((err) => {
+    throw new InvestorServiceError(`Failed to list investors: ${err.message}`);
+  });
+  return data.map(mapInvestor);
 }
 
 /**
@@ -31,29 +34,48 @@ export async function listInvestorsWithBalances(): Promise<
 > {
   const supabase = await createClient();
 
-  const [investorsRes, investmentsRes, distributionsRes, withdrawalsRes] =
-    await Promise.all([
-      supabase.from("investors").select("*").order("created_at", { ascending: false }),
-      supabase.from("investor_phase_investments").select("investor_id, investment_amount"),
-      supabase.from("profit_distributions").select("investor_id, profit_amount"),
-      supabase.from("withdrawals").select("investor_id, amount"),
-    ]);
+  let investorsData: InvestorRow[];
+  let investmentsData: { investor_id: number; investment_amount: number }[];
+  let distributionsData: { investor_id: number | null; profit_amount: number }[];
+  let withdrawalsData: { investor_id: number; amount: number }[];
 
-  const firstError = [
-    investorsRes,
-    investmentsRes,
-    distributionsRes,
-    withdrawalsRes,
-  ].find((r) => r.error)?.error;
-
-  if (firstError) {
+  try {
+    [investorsData, investmentsData, distributionsData, withdrawalsData] =
+      await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase
+            .from("investors")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .range(from, to)
+        ),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("investor_phase_investments")
+            .select("investor_id, investment_amount")
+            .range(from, to)
+        ),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("profit_distributions")
+            .select("investor_id, profit_amount")
+            .range(from, to)
+        ),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("withdrawals")
+            .select("investor_id, amount")
+            .range(from, to)
+        ),
+      ]);
+  } catch (err) {
     throw new InvestorServiceError(
-      `Failed to load investor balances: ${firstError.message}`
+      `Failed to load investor balances: ${err instanceof Error ? err.message : "Unknown error"}`
     );
   }
 
   const investedByInvestor = new Map<number, number>();
-  for (const row of investmentsRes.data ?? []) {
+  for (const row of investmentsData) {
     investedByInvestor.set(
       row.investor_id,
       (investedByInvestor.get(row.investor_id) ?? 0) + Number(row.investment_amount)
@@ -61,7 +83,7 @@ export async function listInvestorsWithBalances(): Promise<
   }
 
   const distributedByInvestor = new Map<number, number>();
-  for (const row of distributionsRes.data ?? []) {
+  for (const row of distributionsData) {
     if (row.investor_id === null) continue;
     distributedByInvestor.set(
       row.investor_id,
@@ -70,14 +92,14 @@ export async function listInvestorsWithBalances(): Promise<
   }
 
   const withdrawnByInvestor = new Map<number, number>();
-  for (const row of withdrawalsRes.data ?? []) {
+  for (const row of withdrawalsData) {
     withdrawnByInvestor.set(
       row.investor_id,
       (withdrawnByInvestor.get(row.investor_id) ?? 0) + Number(row.amount)
     );
   }
 
-  return (investorsRes.data ?? []).map((row) => {
+  return investorsData.map((row) => {
     const investor = mapInvestor(row);
     const totalInvested = investedByInvestor.get(row.id) ?? 0;
     const totalDistributed = distributedByInvestor.get(row.id) ?? 0;

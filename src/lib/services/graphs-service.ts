@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { round2 } from "@/lib/utils/calculations";
 
 export class GraphsServiceError extends Error {}
@@ -68,47 +69,77 @@ function lastNMonthKeys(n: number): string[] {
 export async function getGraphsData(): Promise<GraphsData> {
   const supabase = await createClient();
 
-  const [
-    ledgerRes,
-    contractsRes,
-    paymentsRes,
-    completedContractsRes,
-    distributionsRes,
-    activePhaseRes,
-    loansRes,
-  ] = await Promise.all([
-    supabase
-      .from("cash_ledger")
-      .select("entry_date, amount")
-      .order("entry_date", { ascending: true }),
-    supabase.from("contracts").select("status"),
-    supabase.from("payments").select("payment_date, amount_paid"),
-    supabase.from("contracts").select("profit_amount").eq("status", "COMPLETED"),
-    supabase
-      .from("profit_distributions")
-      .select("profit_amount, investor:investors(name)"),
-    supabase
-      .from("business_phases")
-      .select("id")
-      .eq("status", "ACTIVE")
-      .order("start_date", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase.from("loans").select("amount, amount_repaid"),
-  ]);
+  let ledgerData: { entry_date: string; amount: number }[];
+  let contractsData: { status: string }[];
+  let paymentsData: { payment_date: string; amount_paid: number }[];
+  let completedContractsData: { profit_amount: number }[];
+  let distributionsData: { profit_amount: number; investor: { name: string } | null }[];
+  let loansData: { amount: number; amount_repaid: number }[];
+  let activePhaseRes: { data: { id: number } | null; error: { message: string } | null };
 
-  const firstError = [
-    ledgerRes,
-    contractsRes,
-    paymentsRes,
-    completedContractsRes,
-    distributionsRes,
-    activePhaseRes,
-    loansRes,
-  ].find((r) => r.error)?.error;
+  try {
+    // All six of these grow without bound over the business's lifetime
+    // (every ledger entry, every payment, every contract, forever) — a
+    // bare .select() here is silently capped at whatever the Supabase
+    // project's max_rows is set to, which would quietly understate
+    // every chart on this page once any of these tables crosses that
+    // row count. fetchAllRows pages through everything instead.
+    [
+      ledgerData,
+      contractsData,
+      paymentsData,
+      completedContractsData,
+      distributionsData,
+      activePhaseRes,
+      loansData,
+    ] = await Promise.all([
+      fetchAllRows((from, to) =>
+        supabase
+          .from("cash_ledger")
+          .select("entry_date, amount")
+          .order("entry_date", { ascending: true })
+          .range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase.from("contracts").select("status").range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase.from("payments").select("payment_date, amount_paid").range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("contracts")
+          .select("profit_amount")
+          .eq("status", "COMPLETED")
+          .range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("profit_distributions")
+          .select("profit_amount, investor:investors(name)")
+          .range(from, to)
+      ),
+      supabase
+        .from("business_phases")
+        .select("id")
+        .eq("status", "ACTIVE")
+        .order("start_date", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      fetchAllRows((from, to) =>
+        supabase.from("loans").select("amount, amount_repaid").range(from, to)
+      ),
+    ]);
+  } catch (err) {
+    throw new GraphsServiceError(
+      `Failed to load graph data: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  }
 
-  if (firstError) {
-    throw new GraphsServiceError(`Failed to load graph data: ${firstError.message}`);
+  if (activePhaseRes.error) {
+    throw new GraphsServiceError(
+      `Failed to load graph data: ${activePhaseRes.error.message}`
+    );
   }
 
   // ── Cash flow over the last 12 months ──
@@ -117,7 +148,7 @@ export async function getGraphsData(): Promise<GraphsData> {
   const cashOutByMonth = new Map<string, number>();
   let balanceBeforeWindow = 0;
 
-  for (const row of ledgerRes.data ?? []) {
+  for (const row of ledgerData) {
     const key = monthKey(row.entry_date);
     const amount = Number(row.amount);
     if (months.includes(key)) {
@@ -152,7 +183,7 @@ export async function getGraphsData(): Promise<GraphsData> {
 
   // ── Contract status breakdown ──
   const statusCounts = new Map<string, number>();
-  for (const row of contractsRes.data ?? []) {
+  for (const row of contractsData) {
     statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
   }
   const contractStatus: ContractStatusSlice[] = Array.from(
@@ -161,7 +192,7 @@ export async function getGraphsData(): Promise<GraphsData> {
 
   // ── Monthly payment collections (last 12 months) ──
   const collectionsByMonth = new Map<string, number>();
-  for (const row of paymentsRes.data ?? []) {
+  for (const row of paymentsData) {
     const key = monthKey(row.payment_date);
     if (months.includes(key)) {
       collectionsByMonth.set(
@@ -177,11 +208,11 @@ export async function getGraphsData(): Promise<GraphsData> {
   }));
 
   // ── Profit generated vs distributed ──
-  const totalGenerated = (completedContractsRes.data ?? []).reduce(
+  const totalGenerated = completedContractsData.reduce(
     (sum, c) => sum + Number(c.profit_amount),
     0
   );
-  const totalDistributed = (distributionsRes.data ?? []).reduce(
+  const totalDistributed = distributionsData.reduce(
     (sum, d) => sum + Number(d.profit_amount),
     0
   );
@@ -196,18 +227,22 @@ export async function getGraphsData(): Promise<GraphsData> {
   // ── Investor capital breakdown (active phase only) ──
   let investorCapital: InvestorCapitalSlice[] = [];
   if (activePhaseRes.data?.id) {
-    const { data: investments, error: investmentsError } = await supabase
-      .from("investor_phase_investments")
-      .select("investment_amount, investor:investors(name)")
-      .eq("phase_id", activePhaseRes.data.id);
-
-    if (investmentsError) {
+    const investments = await fetchAllRows<{
+      investment_amount: number;
+      investor: { name: string } | null;
+    }>((from, to) =>
+      supabase
+        .from("investor_phase_investments")
+        .select("investment_amount, investor:investors(name)")
+        .eq("phase_id", activePhaseRes.data!.id)
+        .range(from, to)
+    ).catch((err) => {
       throw new GraphsServiceError(
-        `Failed to load investor capital breakdown: ${investmentsError.message}`
+        `Failed to load investor capital breakdown: ${err.message}`
       );
-    }
+    });
 
-    investorCapital = (investments ?? []).map((row) => ({
+    investorCapital = investments.map((row) => ({
       investorName: row.investor?.name ?? "Unknown",
       amount: Number(row.investment_amount),
     }));
@@ -215,7 +250,7 @@ export async function getGraphsData(): Promise<GraphsData> {
 
   // ── Cash in hand vs outstanding loans ──
   const cashInHandRes = await supabase.rpc("current_cash_in_hand");
-  const totalOutstandingLoans = (loansRes.data ?? []).reduce(
+  const totalOutstandingLoans = loansData.reduce(
     (sum, l) => sum + Math.max(0, Number(l.amount) - Number(l.amount_repaid)),
     0
   );

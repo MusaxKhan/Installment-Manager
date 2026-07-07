@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import {
   mapBusinessPhase,
   mapInvestorPhaseInvestment,
 } from "./mappers";
 import { round2 } from "@/lib/utils/calculations";
 import { writeCashLedgerEntry } from "./cash-ledger-service";
+import type { BusinessPhaseRow } from "@/types/database";
 import type {
   BusinessPhase,
   BusinessPhaseWithTotals,
@@ -17,24 +19,33 @@ export class BusinessPhaseServiceError extends Error {}
 export async function listBusinessPhases(): Promise<BusinessPhaseWithTotals[]> {
   const supabase = await createClient();
 
-  const [phasesRes, investmentsRes] = await Promise.all([
-    supabase.from("business_phases").select("*").order("start_date", { ascending: false }),
-    supabase.from("investor_phase_investments").select("phase_id, investment_amount"),
-  ]);
+  let phasesData: BusinessPhaseRow[];
+  let investmentsData: { phase_id: number; investment_amount: number }[];
 
-  if (phasesRes.error) {
+  try {
+    [phasesData, investmentsData] = await Promise.all([
+      fetchAllRows((from, to) =>
+        supabase
+          .from("business_phases")
+          .select("*")
+          .order("start_date", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("investor_phase_investments")
+          .select("phase_id, investment_amount")
+          .range(from, to)
+      ),
+    ]);
+  } catch (err) {
     throw new BusinessPhaseServiceError(
-      `Failed to list business phases: ${phasesRes.error.message}`
-    );
-  }
-  if (investmentsRes.error) {
-    throw new BusinessPhaseServiceError(
-      `Failed to load phase investment totals: ${investmentsRes.error.message}`
+      `Failed to list business phases: ${err instanceof Error ? err.message : "Unknown error"}`
     );
   }
 
   const totalsByPhase = new Map<number, { total: number; count: number }>();
-  for (const row of investmentsRes.data ?? []) {
+  for (const row of investmentsData) {
     const existing = totalsByPhase.get(row.phase_id) ?? { total: 0, count: 0 };
     totalsByPhase.set(row.phase_id, {
       total: existing.total + Number(row.investment_amount),
@@ -42,7 +53,7 @@ export async function listBusinessPhases(): Promise<BusinessPhaseWithTotals[]> {
     });
   }
 
-  return (phasesRes.data ?? []).map((row) => {
+  return phasesData.map((row) => {
     const phase = mapBusinessPhase(row);
     const totals = totalsByPhase.get(row.id) ?? { total: 0, count: 0 };
     return {
@@ -83,19 +94,19 @@ export async function getPhaseInvestments(
 ): Promise<InvestorPhaseInvestmentWithPercent[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("investor_phase_investments")
-    .select("*, investor:investors(name)")
-    .eq("phase_id", phaseId)
-    .order("investment_amount", { ascending: false });
-
-  if (error) {
+  const rows = await fetchAllRows((from, to) =>
+    supabase
+      .from("investor_phase_investments")
+      .select("*, investor:investors(name)")
+      .eq("phase_id", phaseId)
+      .order("investment_amount", { ascending: false })
+      .range(from, to)
+  ).catch((err) => {
     throw new BusinessPhaseServiceError(
-      `Failed to load phase investments: ${error.message}`
+      `Failed to load phase investments: ${err.message}`
     );
-  }
+  });
 
-  const rows = data ?? [];
   const total = rows.reduce((sum, r) => sum + Number(r.investment_amount), 0);
 
   return rows.map((row) => {

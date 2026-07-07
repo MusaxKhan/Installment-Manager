@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { mapWithdrawal } from "./mappers";
 import { round2 } from "@/lib/utils/calculations";
 import type { Withdrawal, WithdrawalWithInvestor } from "@/types/domain";
 import type { WithdrawalFormValues } from "@/lib/validations/withdrawal";
+import type { WithdrawalRow } from "@/types/database";
 
 export class WithdrawalServiceError extends Error {}
 
@@ -11,21 +13,20 @@ export async function listWithdrawalsForInvestor(
   totalDistributed: number
 ): Promise<(Withdrawal & { remainingBalance: number })[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("withdrawals")
-    .select("*")
-    .eq("investor_id", investorId)
-    .order("withdrawal_date", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw new WithdrawalServiceError(
-      `Failed to list withdrawals: ${error.message}`
-    );
-  }
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from("withdrawals")
+      .select("*")
+      .eq("investor_id", investorId)
+      .order("withdrawal_date", { ascending: true })
+      .order("created_at", { ascending: true })
+      .range(from, to)
+  ).catch((err) => {
+    throw new WithdrawalServiceError(`Failed to list withdrawals: ${err.message}`);
+  });
 
   let runningBalance = totalDistributed;
-  const withBalances = (data ?? []).map((row) => {
+  const withBalances = data.map((row) => {
     runningBalance = round2(runningBalance - Number(row.amount));
     return { ...mapWithdrawal(row), remainingBalance: runningBalance };
   });
@@ -41,29 +42,37 @@ export async function listAllWithdrawals(): Promise<WithdrawalWithInvestor[]> {
   // correct running balance per investor requires every prior
   // withdrawal in chronological order, not just whichever page of
   // recent ones we're about to display. Capping happens after the
-  // balance math, not before.
-  const [withdrawalsRes, distributionsRes] = await Promise.all([
-    supabase
-      .from("withdrawals")
-      .select("*, investor:investors(name)")
-      .order("withdrawal_date", { ascending: true })
-      .order("created_at", { ascending: true }),
-    supabase.from("profit_distributions").select("investor_id, profit_amount"),
-  ]);
+  // balance math, not before — and fetchAllRows is what actually makes
+  // that true, since a bare .select() here is silently capped at
+  // whatever the project's max_rows is set to.
+  let withdrawalsData: (WithdrawalRow & { investor: { name: string } | null })[];
+  let distributionsData: { investor_id: number | null; profit_amount: number }[];
 
-  if (withdrawalsRes.error) {
+  try {
+    [withdrawalsData, distributionsData] = await Promise.all([
+      fetchAllRows((from, to) =>
+        supabase
+          .from("withdrawals")
+          .select("*, investor:investors(name)")
+          .order("withdrawal_date", { ascending: true })
+          .order("created_at", { ascending: true })
+          .range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("profit_distributions")
+          .select("investor_id, profit_amount")
+          .range(from, to)
+      ),
+    ]);
+  } catch (err) {
     throw new WithdrawalServiceError(
-      `Failed to list withdrawals: ${withdrawalsRes.error.message}`
-    );
-  }
-  if (distributionsRes.error) {
-    throw new WithdrawalServiceError(
-      `Failed to load distributed profit totals: ${distributionsRes.error.message}`
+      `Failed to list withdrawals: ${err instanceof Error ? err.message : "Unknown error"}`
     );
   }
 
   const totalDistributedByInvestor = new Map<number, number>();
-  for (const row of distributionsRes.data ?? []) {
+  for (const row of distributionsData) {
     if (row.investor_id === null) continue;
     totalDistributedByInvestor.set(
       row.investor_id,
@@ -78,7 +87,7 @@ export async function listAllWithdrawals(): Promise<WithdrawalWithInvestor[]> {
   const runningBalanceByInvestor = new Map<number, number>();
   const withResults: WithdrawalWithInvestor[] = [];
 
-  for (const row of withdrawalsRes.data ?? []) {
+  for (const row of withdrawalsData) {
     const startingBalance =
       runningBalanceByInvestor.get(row.investor_id) ??
       totalDistributedByInvestor.get(row.investor_id) ??
