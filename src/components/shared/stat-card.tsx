@@ -27,14 +27,46 @@ export function StatCard({
 }: StatCardProps) {
   
   const variantStyles = {
-    slate: { bg: "bg-white border-slate-200/80 hover:border-slate-300", text: "text-slate-900 font-black", iconBg: "bg-slate-50 text-slate-600" },
-    blue: { bg: "bg-white border-blue-100/80 hover:border-blue-200", text: "text-blue-700 font-black", iconBg: "bg-blue-50/80 text-blue-600" },
-    indigo: { bg: "bg-white border-indigo-100/80 hover:border-indigo-200", text: "text-indigo-700 font-black", iconBg: "bg-indigo-50/80 text-indigo-600" },
-    amber: { bg: "bg-white border-amber-100/80 hover:border-amber-200", text: "text-amber-700 font-black", iconBg: "bg-amber-50/80 text-amber-600" },
-    emerald: { bg: "bg-white border-emerald-100/80 hover:border-emerald-200", text: "text-emerald-700 font-black", iconBg: "bg-emerald-50/80 text-emerald-600" },
-    rose: { bg: "bg-white border-rose-100/80 hover:border-rose-200", text: "text-rose-700 font-black", iconBg: "bg-rose-50/80 text-rose-600" },
-    violet: { bg: "bg-white border-violet-100/80 hover:border-violet-200", text: "text-violet-700 font-black", iconBg: "bg-violet-50/80 text-violet-600" },
-    cyan: { bg: "bg-white border-cyan-100/80 hover:border-cyan-200", text: "text-cyan-700 font-black", iconBg: "bg-cyan-50/80 text-cyan-600" }
+    slate: {
+      bg: "bg-card border-border hover:border-muted-foreground/30",
+      text: "text-foreground font-black",
+      iconBg: "bg-muted text-muted-foreground",
+    },
+    blue: {
+      bg: "bg-card border-sky-500/15 hover:border-sky-500/35 dark:border-sky-400/20 dark:hover:border-sky-400/40",
+      text: "text-sky-600 font-black dark:text-sky-400",
+      iconBg: "bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-400",
+    },
+    indigo: {
+      bg: "bg-card border-indigo-500/15 hover:border-indigo-500/35 dark:border-indigo-400/20 dark:hover:border-indigo-400/40",
+      text: "text-indigo-600 font-black dark:text-indigo-400",
+      iconBg: "bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-400",
+    },
+    amber: {
+      bg: "bg-card border-amber-500/15 hover:border-amber-500/35 dark:border-amber-400/20 dark:hover:border-amber-400/40",
+      text: "text-amber-600 font-black dark:text-amber-400",
+      iconBg: "bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400",
+    },
+    emerald: {
+      bg: "bg-card border-emerald-500/15 hover:border-emerald-500/35 dark:border-emerald-400/20 dark:hover:border-emerald-400/40",
+      text: "text-emerald-600 font-black dark:text-emerald-400",
+      iconBg: "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400",
+    },
+    rose: {
+      bg: "bg-card border-rose-500/15 hover:border-rose-500/35 dark:border-rose-400/20 dark:hover:border-rose-400/40",
+      text: "text-rose-600 font-black dark:text-rose-400",
+      iconBg: "bg-rose-500/10 text-rose-600 dark:bg-rose-400/10 dark:text-rose-400",
+    },
+    violet: {
+      bg: "bg-card border-violet-500/15 hover:border-violet-500/35 dark:border-violet-400/20 dark:hover:border-violet-400/40",
+      text: "text-violet-600 font-black dark:text-violet-400",
+      iconBg: "bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-400",
+    },
+    cyan: {
+      bg: "bg-card border-cyan-500/15 hover:border-cyan-500/35 dark:border-cyan-400/20 dark:hover:border-cyan-400/40",
+      text: "text-cyan-600 font-black dark:text-cyan-400",
+      iconBg: "bg-cyan-500/10 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-400",
+    },
   };
 
   const currentStyles = variantStyles[variant];
@@ -42,20 +74,20 @@ export function StatCard({
   const cardContent = (
     <CardContent className="flex items-start justify-between gap-4 p-5">
       <div className="space-y-1">
-        <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 group-hover:text-slate-500 transition-colors">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground transition-colors">
           {label}
         </p>
         <p className={cn("text-2xl tabular-nums tracking-tight leading-none pt-1", currentStyles.text)}>
           {value}
         </p>
         {hint && (
-          <p className="text-[11px] font-medium text-slate-400 mt-1.5 flex items-center gap-1">
-            <span className="h-1 w-1 rounded-full bg-slate-300" />
+          <p className="text-[11px] font-medium text-muted-foreground mt-1.5 flex items-center gap-1">
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/60" />
             {hint}
           </p>
         )}
       </div>
-      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 shadow-sm border border-black/[0.02]", currentStyles.iconBg)}>
+      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 shadow-sm border border-black/[0.02] dark:border-white/[0.03]", currentStyles.iconBg)}>
         {href ? (
           <ChevronRight className="h-4 w-4 stroke-[2.5] opacity-0 group-hover:opacity-100 transition-opacity absolute" />
         ) : null}

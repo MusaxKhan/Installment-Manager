@@ -31,12 +31,24 @@ import { fetchGraphsData } from "@/lib/actions/graphs-actions";
 import { formatPKR } from "@/lib/utils/format";
 import type { GraphsData } from "@/lib/services/graphs-service";
 
-const CHART_COLORS = ["#2563eb", "#15803d", "#b45309", "#6d28d9", "#b42318"];
+// CSS custom properties, not literal hex — these track the active
+// theme (light/dark) automatically since they resolve at paint time,
+// the same way the rest of the app's colors do. A hardcoded hex here
+// would silently freeze the charts in light-theme colors regardless of
+// which theme is active, exactly the kind of drift that made these
+// charts unreadable against a dark background before this fix.
+const CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
 
 const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: "#2563eb",
-  OVERDUE: "#b42318",
-  COMPLETED: "#15803d",
+  ACTIVE: "var(--status-active)",
+  OVERDUE: "var(--status-overdue)",
+  COMPLETED: "var(--status-completed)",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -117,11 +129,11 @@ export default function GraphsPage() {
                   <AreaChart data={data.cashFlow}>
                     <defs>
                       <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                        <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                     <YAxis
                       tick={{ fontSize: 12 }}
@@ -129,13 +141,21 @@ export default function GraphsPage() {
                     />
                     <Tooltip
                       formatter={formatTooltipPKR}
-                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        color: "var(--popover-foreground)",
+                      }}
+                      labelStyle={{ color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--popover-foreground)" }}
                     />
                     <Area
                       type="monotone"
                       dataKey="runningBalance"
                       name="Cash in Hand"
-                      stroke="#2563eb"
+                      stroke="var(--chart-1)"
                       strokeWidth={2}
                       fill="url(#balanceGradient)"
                     />
@@ -160,7 +180,7 @@ export default function GraphsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={data.monthlyCollections}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis
                       tick={{ fontSize: 11 }}
@@ -168,9 +188,17 @@ export default function GraphsPage() {
                     />
                     <Tooltip
                       formatter={formatTooltipPKR}
-                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        color: "var(--popover-foreground)",
+                      }}
+                      labelStyle={{ color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--popover-foreground)" }}
                     />
-                    <Bar dataKey="amountCollected" name="Collected" fill="#15803d" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="amountCollected" name="Collected" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -210,7 +238,7 @@ export default function GraphsPage() {
                       {data.contractStatus.map((entry) => (
                         <Cell
                           key={entry.status}
-                          fill={STATUS_COLORS[entry.status] ?? "#64748b"}
+                          fill={STATUS_COLORS[entry.status] ?? "var(--muted-foreground)"}
                         />
                       ))}
                     </Pie>
@@ -219,7 +247,15 @@ export default function GraphsPage() {
                         String(value),
                         STATUS_LABELS[String(name)] ?? String(name),
                       ]}
-                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        color: "var(--popover-foreground)",
+                      }}
+                      labelStyle={{ color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--popover-foreground)" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -260,7 +296,15 @@ export default function GraphsPage() {
                     </Pie>
                     <Tooltip
                       formatter={formatTooltipPKR}
-                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        color: "var(--popover-foreground)",
+                      }}
+                      labelStyle={{ color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--popover-foreground)" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -284,7 +328,7 @@ export default function GraphsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={data.profitComparison} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis
                       type="number"
                       tick={{ fontSize: 11 }}
@@ -293,11 +337,19 @@ export default function GraphsPage() {
                     <YAxis type="category" dataKey="label" tick={{ fontSize: 12 }} />
                     <Tooltip
                       formatter={formatTooltipPKR}
-                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        color: "var(--popover-foreground)",
+                      }}
+                      labelStyle={{ color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--popover-foreground)" }}
                     />
                     <Legend />
-                    <Bar dataKey="generated" name="Generated" fill="#15803d" radius={[0, 4, 4, 0]} />
-                    <Bar dataKey="distributed" name="Distributed" fill="#b45309" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="generated" name="Generated" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="distributed" name="Distributed" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}

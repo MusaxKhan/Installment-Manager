@@ -94,7 +94,7 @@ export function SidebarNav({ role }: { role: UserRole }) {
                     className={cn(
                       "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                       isActive
-                        ? "bg-secondary text-primary"
+                        ? "bg-secondary text-primary dark:shadow-[inset_3px_0_0_0_var(--primary)]"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
@@ -119,7 +119,7 @@ export function SidebarBrand() {
         alt="Sitara Traders logo"
         width={32}
         height={32}
-        className="h-8 w-8 shrink-0 rounded-md"
+        className="h-8 w-8 shrink-0 rounded-md dark:shadow-[0_0_16px_-2px_rgba(214,164,78,0.55)]"
         priority
       />
       <div>

@@ -67,40 +67,57 @@
 }
 
 .dark {
-  --background: #0a1a2e;
-  --foreground: #e8eef7;
-  --card: #0f2238;
-  --card-foreground: #e8eef7;
-  --popover: #0f2238;
-  --popover-foreground: #e8eef7;
+  /*
+    Dark theme direction: a vault ledger at night, not a generic dark
+    SaaS panel. Deep navy-black surfaces with the actual brand gold
+    (sampled from the Sitara Traders logo's bolt) as the primary accent
+    instead of a generic blue or acid-green — gold reads as "value,
+    ledger, trading" for this specific business, and ties every primary
+    action back to the mark on the sidebar. Sky blue is kept as a
+    secondary accent for "in progress / active" signal so gold stays
+    reserved for brand + primary actions rather than being used for
+    everything.
+  */
+  --background: #0a1220;
+  --foreground: #eaf0fa;
+  --card: #101b2e;
+  --card-foreground: #eaf0fa;
+  --popover: #16233a;
+  --popover-foreground: #eaf0fa;
 
-  --primary: #4d8eff;
-  --primary-foreground: #0a1a2e;
-  --secondary: #142b46;
-  --secondary-foreground: #e8eef7;
-  --accent: #4d8eff;
-  --accent-foreground: #0a1a2e;
+  --primary: #d6a44e;
+  --primary-foreground: #1a1206;
+  --secondary: #16233a;
+  --secondary-foreground: #eaf0fa;
+  --accent: #5b9bff;
+  --accent-foreground: #071224;
 
-  --muted: #142b46;
-  --muted-foreground: #8fa6c4;
+  --muted: #16233a;
+  --muted-foreground: #8fa0be;
 
-  --destructive: #e25950;
-  --destructive-foreground: #0a1a2e;
+  --destructive: #f87171;
+  --destructive-foreground: #2c1418;
 
-  --border: #1d3a5a;
-  --input: #1d3a5a;
-  --ring: #4d8eff;
+  --border: #1f2e46;
+  --input: #1f2e46;
+  --ring: #d6a44e;
 
-  --status-active: #4d8eff;
+  --status-active: #5b9bff;
   --status-active-bg: #122944;
-  --status-completed: #4ade80;
-  --status-completed-bg: #0f2a1c;
+  --status-completed: #34d399;
+  --status-completed-bg: #0f2a20;
   --status-overdue: #f87171;
-  --status-overdue-bg: #2c1412;
-  --status-pending: #8fa6c4;
-  --status-pending-bg: #142b46;
+  --status-overdue-bg: #2c1418;
+  --status-pending: #8fa0be;
+  --status-pending-bg: #16233a;
   --status-partial: #fbbf24;
-  --status-partial-bg: #2c2110;
+  --status-partial-bg: #2c2210;
+
+  --chart-1: #d6a44e;
+  --chart-2: #34d399;
+  --chart-3: #5b9bff;
+  --chart-4: #a78bfa;
+  --chart-5: #f87171;
 }
 
 @theme inline {

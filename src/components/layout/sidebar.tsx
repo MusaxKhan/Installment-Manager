@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarBrand, SidebarNav } from "./sidebar-nav";
+import { ThemeToggle } from "./theme-toggle";
 import type { UserRole } from "@/types/domain";
 
 export function MobileSidebar({ role }: { role: UserRole }) {
@@ -35,6 +36,9 @@ export function MobileSidebar({ role }: { role: UserRole }) {
           <div onClick={() => setOpen(false)}>
             <SidebarNav role={role} />
           </div>
+          <div className="border-t border-border p-3">
+            <ThemeToggle />
+          </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -46,6 +50,9 @@ export function DesktopSidebar({ role }: { role: UserRole }) {
     <aside className="hidden w-64 flex-col border-r border-border bg-card md:flex">
       <SidebarBrand />
       <SidebarNav role={role} />
+      <div className="border-t border-border p-3">
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }
