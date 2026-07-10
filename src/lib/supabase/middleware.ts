@@ -58,19 +58,30 @@ export async function updateSession(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
-  const isAuthRoute = pathname.startsWith("/login");
+  const isLoginRoute = pathname.startsWith("/login");
+  // /forgot-password and /reset-password must stay reachable regardless
+  // of auth state: a person requesting a reset link isn't logged in yet,
+  // and a person who just clicked the emailed recovery link IS
+  // technically "authenticated" (Supabase issues a short-lived recovery
+  // session) but must not be bounced to /dashboard before they've
+  // actually set a new password — only /login itself redirects an
+  // already-authenticated user away.
+  const isPublicRoute =
+    isLoginRoute ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password");
   const isStaticOrApi =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.includes(".");
 
-  if (!user && !isAuthRoute && !isStaticOrApi) {
+  if (!user && !isPublicRoute && !isStaticOrApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  if (user && isLoginRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

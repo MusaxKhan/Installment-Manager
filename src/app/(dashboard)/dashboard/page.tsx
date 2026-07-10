@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getDashboardStats } from "@/lib/services/dashboard-service";
+import { getStorageUsage } from "@/lib/services/storage-usage-service";
+import { StorageUsageCard } from "@/components/shared/storage-usage-card";
 import { listContracts } from "@/lib/services/contract-service";
 import { getActiveBusinessPhase } from "@/lib/services/business-phase-service";
 import { formatPKR, formatDate } from "@/lib/utils/format";
@@ -37,11 +39,16 @@ export default async function DashboardPage() {
     overdueContracts,
     activePhase,
     phases,
+    storageUsage,
   ] = await Promise.all([
     getDashboardStats(),
     listContracts({ status: "OVERDUE" }),
     getActiveBusinessPhase(),
     listBusinessPhases(),
+    // Falls back to null (rendered as a "run this migration" note)
+    // rather than crashing the whole dashboard if migration 005
+    // hasn't been applied yet.
+    getStorageUsage().catch(() => null),
   ]);
 
   // Quick mathematical metrics for modern UI highlights
@@ -264,6 +271,8 @@ export default async function DashboardPage() {
 
             </CardContent>
           </Card>
+
+          <StorageUsageCard usage={storageUsage} />
         </div>
 
       </div>

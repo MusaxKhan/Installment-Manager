@@ -454,6 +454,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: number;
       };
+      get_database_size_bytes: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
       create_loan: {
         Args: {
           p_lender_name: string;

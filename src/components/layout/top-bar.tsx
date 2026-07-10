@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
+import Link from "next/link";
 import { signOutAction } from "@/lib/actions/auth-actions";
 import type { UserProfile } from "@/types/domain";
 
@@ -66,6 +68,13 @@ export function TopBar({ profile }: { profile: UserProfile }) {
                 {profile.email}
               </p>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/account" className="flex items-center gap-2 cursor-pointer">
+                <Settings className="h-4 w-4" />
+                Account settings
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <form action={signOutAction}>
               <button
