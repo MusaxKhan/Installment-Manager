@@ -8,6 +8,7 @@ import {
   mapContract,
   mapInstallment,
   mapPayment,
+  mapContractInvestorSnapshot,
 } from "./mappers";
 import {
   calculateContractFinancials,
@@ -18,6 +19,7 @@ import type {
   Contract,
   ContractWithClient,
   ContractWithDetails,
+  ContractInvestorSnapshotWithInvestor,
 } from "@/types/domain";
 import type { ContractFormValues } from "@/lib/validations/contract";
 
@@ -260,6 +262,35 @@ export async function getContractById(
   };
 }
 
+/**
+ * Returns the investor pool that was permanently locked in for this
+ * contract at creation time (see snapshot_contract_investors). This is
+ * exactly who will receive — or already received — this contract's profit;
+ * it does not change if investors join or add capital later.
+ */
+export async function getContractInvestorSnapshot(
+  contractId: number
+): Promise<ContractInvestorSnapshotWithInvestor[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("contract_investor_snapshots")
+    .select("*, investor:investors(name)")
+    .eq("contract_id", contractId)
+    .order("investor_id", { ascending: true });
+
+  if (error) {
+    throw new ContractServiceError(
+      `Failed to fetch the locked investor pool: ${error.message}`
+    );
+  }
+
+  return (data ?? []).map((row) => ({
+    ...mapContractInvestorSnapshot(row),
+    investorName: row.investor?.name ?? "Unknown investor",
+  }));
+}
+
 // export async function updateContractRecord(
 //   contractId: number,
 //   values: ContractFormValues
@@ -373,6 +404,38 @@ export async function createContractRecord(
     throw new ContractServiceError(
       `Failed to generate installment schedule: ${installmentError.message}`
     );
+  }
+
+  // Freeze the investor pool that is funding this contract right now.
+  // This is a permanent snapshot — profit distribution for this contract
+  // will always read from it, never from the live investor list, so an
+  // investor who joins later (or adds more capital later) can never end
+  // up sharing in profit from a contract that started before they did.
+  const { error: snapshotError } = await supabase.rpc(
+    "snapshot_contract_investors",
+    { p_contract_id: contractRow.id }
+  );
+
+  if (snapshotError) {
+    // Roll back everything — a contract must never exist without a locked
+    // investor pool, otherwise its profit split would be undefined.
+    await supabase.from("installments").delete().eq("contract_id", contractRow.id);
+    await supabase.from("contracts").delete().eq("id", contractRow.id);
+    throw new ContractServiceError(
+      `Failed to lock in the investor pool for this contract: ${snapshotError.message}`
+    );
+  }
+
+  // The RPC above pins contracts.phase_id server-side — refetch so the
+  // Contract we return reflects that.
+  const { data: refreshedContractRow, error: refetchError } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("id", contractRow.id)
+    .single();
+
+  if (!refetchError && refreshedContractRow) {
+    Object.assign(contractRow, refreshedContractRow);
   }
 
   // Cash-out: the purchase price leaves cash-in-hand the moment a

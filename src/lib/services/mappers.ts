@@ -8,6 +8,7 @@ import type {
   BusinessPhaseRow,
   InvestorPhaseInvestmentRow,
   ProfitDistributionRow,
+  ContractInvestorSnapshotRow,
   WithdrawalRow,
 } from "@/types/database";
 import type {
@@ -20,6 +21,7 @@ import type {
   BusinessPhase,
   InvestorPhaseInvestment,
   ProfitDistribution,
+  ContractInvestorSnapshot,
   Withdrawal,
 } from "@/types/domain";
 
@@ -161,6 +163,20 @@ export function mapProfitDistribution(
     phaseId: row.phase_id,
     investorId: row.investor_id,
     profitAmount: Number(row.profit_amount),
+    createdAt: row.created_at,
+  };
+}
+
+export function mapContractInvestorSnapshot(
+  row: ContractInvestorSnapshotRow
+): ContractInvestorSnapshot {
+  return {
+    id: row.id,
+    contractId: row.contract_id,
+    phaseId: row.phase_id,
+    investorId: row.investor_id,
+    investmentAmount: Number(row.investment_amount),
+    percentOfPool: Number(row.percent_of_pool),
     createdAt: row.created_at,
   };
 }

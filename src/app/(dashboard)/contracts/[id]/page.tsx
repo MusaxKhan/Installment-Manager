@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ShieldCheck, Coins } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Coins, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,7 +16,11 @@ import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog
 import { PendingPaymentsBanner } from "@/components/payments/pending-payments-banner";
 import { DistributeProfitButton } from "@/components/contracts/distribute-profit-button";
 import { DistributionHistoryTable } from "@/components/contracts/distribution-history-table";
-import { getContractById } from "@/lib/services/contract-service";
+import { InvestorPoolTable } from "@/components/contracts/investor-pool-table";
+import {
+  getContractById,
+  getContractInvestorSnapshot,
+} from "@/lib/services/contract-service";
 import { listPaymentEditsForContract } from "@/lib/services/payment-service";
 import { listDistributionsForContract } from "@/lib/services/profit-distribution-service";
 import { formatDate, formatPKR, formatPercent } from "@/lib/utils/format";
@@ -33,12 +37,14 @@ export default async function ContractDetailPage({
 
   if (!contract) notFound();
 
-  const [distributions, editsByPaymentId] = await Promise.all([
-    contract.status === "COMPLETED"
-      ? listDistributionsForContract(contract.id)
-      : Promise.resolve([]),
-    listPaymentEditsForContract(contract.id),
-  ]);
+  const [distributions, editsByPaymentId, investorSnapshot] =
+    await Promise.all([
+      contract.status === "COMPLETED"
+        ? listDistributionsForContract(contract.id)
+        : Promise.resolve([]),
+      listPaymentEditsForContract(contract.id),
+      getContractInvestorSnapshot(contract.id),
+    ]);
 
   const paidCount = contract.installments.filter(
     (i) => i.status === "PAID"
@@ -233,6 +239,18 @@ export default async function ContractDetailPage({
             editsByPaymentId={editsByPaymentId}
             profitDistributed={contract.profitDistributed}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Users className="h-4 w-4 text-accent" />
+            Investor Pool
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <InvestorPoolTable snapshot={investorSnapshot} />
         </CardContent>
       </Card>
 

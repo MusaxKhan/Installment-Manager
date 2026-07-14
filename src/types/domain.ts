@@ -231,6 +231,28 @@ export interface ProfitDistributionWithDetails extends ProfitDistribution {
   phaseName: string | null;
 }
 
+// ── Contract Investor Snapshots (Phase 4) ──
+// Frozen at the moment a contract is created: who was funding the active
+// phase then, and how much. Distribution always uses this, never the live
+// investor_phase_investments table, so later investors (or later top-ups by
+// existing investors) never change how an already-running contract's
+// profit gets split.
+
+export interface ContractInvestorSnapshot {
+  id: number;
+  contractId: number;
+  phaseId: number;
+  investorId: number;
+  investmentAmount: number;
+  percentOfPool: number;
+  createdAt: string;
+}
+
+export interface ContractInvestorSnapshotWithInvestor
+  extends ContractInvestorSnapshot {
+  investorName: string;
+}
+
 // ── Withdrawals (Phase 2) ──
 
 export interface Withdrawal {

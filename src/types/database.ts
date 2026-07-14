@@ -155,6 +155,16 @@ export type ProfitDistributionRow = {
   created_at: string;
 }
 
+export type ContractInvestorSnapshotRow = {
+  id: number;
+  contract_id: number;
+  phase_id: number;
+  investor_id: number;
+  investment_amount: number;
+  percent_of_pool: number;
+  created_at: string;
+}
+
 export type WithdrawalRow = {
   id: number;
   investor_id: number;
@@ -353,6 +363,34 @@ export interface Database {
           }
         ];
       };
+      contract_investor_snapshots: {
+        Row: ContractInvestorSnapshotRow;
+        Insert: Partial<ContractInvestorSnapshotRow>;
+        Update: Partial<ContractInvestorSnapshotRow>;
+        Relationships: [
+          {
+            foreignKeyName: "contract_investor_snapshots_contract_id_fkey";
+            columns: ["contract_id"];
+            isOneToOne: false;
+            referencedRelation: "contracts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "contract_investor_snapshots_investor_id_fkey";
+            columns: ["investor_id"];
+            isOneToOne: false;
+            referencedRelation: "investors";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "contract_investor_snapshots_phase_id_fkey";
+            columns: ["phase_id"];
+            isOneToOne: false;
+            referencedRelation: "business_phases";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       withdrawals: {
         Row: WithdrawalRow;
         Insert: Partial<WithdrawalRow>;
@@ -436,6 +474,10 @@ export interface Database {
       distribute_contract_profit: {
         Args: { p_contract_id: number };
         Returns: ProfitDistributionRow[];
+      };
+      snapshot_contract_investors: {
+        Args: { p_contract_id: number };
+        Returns: void;
       };
       investor_available_balance: {
         Args: { p_investor_id: number };
