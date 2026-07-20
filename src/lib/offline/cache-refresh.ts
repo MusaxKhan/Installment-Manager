@@ -38,6 +38,29 @@ export async function refreshOfflineCache(): Promise<{
       if (existingPending.length > 0) {
         await offlineDb.payments.bulkPut(existingPending);
       }
+
+      // bulkPut is an upsert — it can refresh a row but can never tell
+      // Dexie "this id no longer exists". Contracts are hard-deleted
+      // (see delete_contract() in supabase/sql/004_contract_deletion.sql),
+      // so without this the deleted contract — and its installments/
+      // payments — would linger in the offline cache forever and keep
+      // showing up while browsing offline.
+      if (snapshot.deletedContractIds.length > 0) {
+        await offlineDb.contracts.bulkDelete(snapshot.deletedContractIds);
+        await offlineDb.installments
+          .where("contractId")
+          .anyOf(snapshot.deletedContractIds)
+          .delete();
+        // Leave pending (not-yet-synced) payments alone even for a
+        // deleted contract — the sync engine, not this refresh, is
+        // responsible for surfacing that conflict when it tries to
+        // push them.
+        await offlineDb.payments
+          .where("contractId")
+          .anyOf(snapshot.deletedContractIds)
+          .and((p) => p.isPendingSync !== true)
+          .delete();
+      }
     }
   );
 

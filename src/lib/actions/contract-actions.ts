@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   createContractRecord,
   updateContractRecord,
+  deleteContract,
   ContractServiceError,
 } from "@/lib/services/contract-service";
 import { contractSchema } from "@/lib/validations/contract";
@@ -115,4 +116,27 @@ export async function updateContractAction(
   revalidatePath(`/clients/${parsed.data.clientId}`);
 
   redirect(`/contracts/${contractId}`);
+}
+
+export async function deleteContractAction(
+  contractId: number,
+  clientId: number,
+  reverseCash: boolean
+): Promise<ActionResult> {
+  try {
+    await deleteContract(contractId, reverseCash);
+  } catch (err) {
+    if (err instanceof ContractServiceError) {
+      return { success: false, error: err.message };
+    }
+    throw err;
+  }
+
+  revalidatePath("/contracts");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
+
+  return { success: true };
 }

@@ -222,6 +222,18 @@ export type BusinessExpenseRow = {
   updated_at: string;
 }
 
+export type ContractDeletionLogRow = {
+  id: number;
+  contract_id: number;
+  contract_code: string;
+  client_id: number | null;
+  cash_reversed: boolean;
+  deleted_by: string | null;
+  deleted_by_email: string | null;
+  snapshot: unknown;
+  created_at: string;
+}
+
 export type LoanRow = {
   id: number;
   lender_name: string;
@@ -491,6 +503,20 @@ export interface Database {
         Update: Partial<LoanRow>;
         Relationships: [];
       };
+      contract_deletion_log: {
+        Row: ContractDeletionLogRow;
+        Insert: Partial<ContractDeletionLogRow>;
+        Update: Partial<ContractDeletionLogRow>;
+        Relationships: [
+          {
+            foreignKeyName: "contract_deletion_log_deleted_by_fkey";
+            columns: ["deleted_by"];
+            isOneToOne: false;
+            referencedRelation: "user_profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -558,6 +584,13 @@ export interface Database {
           p_repayment_date: string;
         };
         Returns: LoanRow[];
+      };
+      delete_contract: {
+        Args: {
+          p_contract_id: number;
+          p_reverse_cash: boolean;
+        };
+        Returns: ContractDeletionLogRow;
       };
     };
   };

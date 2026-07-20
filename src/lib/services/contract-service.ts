@@ -581,6 +581,61 @@ export async function recomputeContractStatus(
  * `installments` require an authenticated staff session, which a cron
  * invocation doesn't have.
  */
+/**
+ * Permanently deletes a contract and everything that points at it
+ * (installments, payments, payment_edits, investor snapshot, and
+ * cash_ledger entries), via the atomic delete_contract() Postgres
+ * function — see supabase/sql/004_contract_deletion.sql for the full
+ * dependency-order breakdown and why this can't safely be done as
+ * several sequential client-side deletes.
+ *
+ * `reverseCash` controls what happens to cash-in-hand:
+ *  - true:  the contract's cash_ledger rows (purchase + any payments
+ *           received) are deleted outright — cash-in-hand ends up as
+ *           if the contract never existed. Use this for correcting a
+ *           mistaken entry.
+ *  - false: the cash_ledger rows are kept (cash-in-hand and historical
+ *           totals are unaffected) but detached from the contract.
+ *           Use this when the contract is being removed for another
+ *           reason but the cash it moved was real and should stay
+ *           reflected in the books.
+ *
+ * Blocked entirely (by the Postgres function itself) for COMPLETED
+ * contracts whose profit has already been distributed to investors —
+ * see the function comment for why that case can't be safely reversed.
+ *
+ * Requires admin privileges; this is checked both here and again
+ * inside the Postgres function.
+ */
+export async function deleteContract(
+  contractId: number,
+  reverseCash: boolean
+): Promise<void> {
+  const { requireAdmin, UserServiceError } = await import("./user-service");
+  try {
+    await requireAdmin();
+  } catch (err) {
+    if (err instanceof UserServiceError) {
+      throw new ContractServiceError(err.message);
+    }
+    throw err;
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc("delete_contract", {
+    p_contract_id: contractId,
+    p_reverse_cash: reverseCash,
+  });
+
+  if (error) {
+    // The Postgres function's RAISE EXCEPTION messages (not found,
+    // already distributed, not admin) come through as error.message
+    // and are already human-readable.
+    throw new ContractServiceError(error.message);
+  }
+}
+
 export async function recomputeAllContractStatuses(
   injectedClient?: SupabaseClient<Database>
 ): Promise<{ checked: number; errors: { contractId: number; message: string }[] }> {

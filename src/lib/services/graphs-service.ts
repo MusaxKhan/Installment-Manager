@@ -79,46 +79,48 @@ function lastNMonthKeys(n: number): string[] {
 export async function getGraphsData(): Promise<GraphsData> {
   const supabase = await createClient();
 
-  let ledgerData: { entry_date: string; amount: number }[];
+  let ledgerData: { entry_date: string; amount: number; entry_type: string }[];
   let contractsData: { status: string }[];
-  let paymentsData: { payment_date: string; amount_paid: number }[];
   let completedContractsData: { profit_amount: number }[];
   let distributionsData: { profit_amount: number; investor: { name: string } | null }[];
   let loansData: { amount: number; amount_repaid: number }[];
   let activePhaseRes: { data: { id: number } | null; error: { message: string } | null };
   let businessExpensesData: { category: BusinessExpenseCategory; amount: number }[];
-  let contractPurchaseTotalData: { purchase_price: number }[];
 
   try {
-    // All six of these grow without bound over the business's lifetime
-    // (every ledger entry, every payment, every contract, forever) — a
-    // bare .select() here is silently capped at whatever the Supabase
-    // project's max_rows is set to, which would quietly understate
-    // every chart on this page once any of these tables crosses that
-    // row count. fetchAllRows pages through everything instead.
+    // All of these grow without bound over the business's lifetime
+    // (every ledger entry, every contract, forever) — a bare .select()
+    // here is silently capped at whatever the Supabase project's
+    // max_rows is set to, which would quietly understate every chart
+    // on this page once any of these tables crosses that row count.
+    // fetchAllRows pages through everything instead.
+    //
+    // Monthly collections and contract-purchase totals are both
+    // derived from cash_ledger (entry_type payment_received / purchase)
+    // rather than the payments/contracts tables directly. This matters
+    // for deleted contracts: deleteContract()'s "keep cash history"
+    // mode detaches (rather than deletes) the relevant cash_ledger
+    // rows specifically so cash-in-hand and these charts keep agreeing
+    // with each other — reading payments/contracts here instead would
+    // silently disagree with cash-in-hand for any deleted contract.
     [
       ledgerData,
       contractsData,
-      paymentsData,
       completedContractsData,
       distributionsData,
       activePhaseRes,
       loansData,
       businessExpensesData,
-      contractPurchaseTotalData,
     ] = await Promise.all([
       fetchAllRows((from, to) =>
         supabase
           .from("cash_ledger")
-          .select("entry_date, amount")
+          .select("entry_date, amount, entry_type")
           .order("entry_date", { ascending: true })
           .range(from, to)
       ),
       fetchAllRows((from, to) =>
         supabase.from("contracts").select("status").range(from, to)
-      ),
-      fetchAllRows((from, to) =>
-        supabase.from("payments").select("payment_date, amount_paid").range(from, to)
       ),
       fetchAllRows((from, to) =>
         supabase
@@ -145,9 +147,6 @@ export async function getGraphsData(): Promise<GraphsData> {
       ),
       fetchAllRows((from, to) =>
         supabase.from("business_expenses").select("category, amount").range(from, to)
-      ),
-      fetchAllRows((from, to) =>
-        supabase.from("contracts").select("purchase_price").range(from, to)
       ),
     ]);
   } catch (err) {
@@ -211,13 +210,17 @@ export async function getGraphsData(): Promise<GraphsData> {
   ).map(([status, count]) => ({ status, count }));
 
   // ── Monthly payment collections (last 12 months) ──
+  // Sourced from cash_ledger (entry_type = payment_received) rather
+  // than the payments table directly — see the comment above the
+  // fetch block for why.
   const collectionsByMonth = new Map<string, number>();
-  for (const row of paymentsData) {
-    const key = monthKey(row.payment_date);
+  for (const row of ledgerData) {
+    if (row.entry_type !== "payment_received") continue;
+    const key = monthKey(row.entry_date);
     if (months.includes(key)) {
       collectionsByMonth.set(
         key,
-        round2((collectionsByMonth.get(key) ?? 0) + Number(row.amount_paid))
+        round2((collectionsByMonth.get(key) ?? 0) + Number(row.amount))
       );
     }
   }
@@ -289,10 +292,9 @@ export async function getGraphsData(): Promise<GraphsData> {
     );
   }
   const totalContractPurchases = round2(
-    contractPurchaseTotalData.reduce(
-      (sum, c) => sum + Number(c.purchase_price),
-      0
-    )
+    ledgerData
+      .filter((row) => row.entry_type === "purchase")
+      .reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0)
   );
   const expenseBreakdown: ExpenseCategorySlice[] = [
     ...(totalContractPurchases > 0

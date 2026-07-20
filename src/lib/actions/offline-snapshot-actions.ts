@@ -15,7 +15,7 @@ import { BLACKLIST_OVERDUE_MONTHS_THRESHOLD } from "@/lib/utils/calculations";
 export async function getOfflineSnapshot() {
   const supabase = await createClient();
 
-  const [clientsRes, contractsRes] = await Promise.all([
+  const [clientsRes, contractsRes, deletionsRes] = await Promise.all([
     supabase
       .from("clients")
       .select("*")
@@ -27,6 +27,19 @@ export async function getOfflineSnapshot() {
       .select("*, client:clients(name)")
       .order("updated_at", { ascending: false })
       .limit(500),
+    // Contracts are hard-deleted, not soft-deleted, so bulkPut (upsert)
+    // alone can never remove a stale row from the offline cache — an
+    // upsert has no way to say "this id no longer exists". We pull the
+    // recent deletion log instead and explicitly prune these ids from
+    // Dexie in refreshOfflineCache(). Bounded to recent deletions the
+    // same way the rest of this snapshot is bounded to recent/active
+    // records — an old deletion that's already aged out of a 500-device
+    // cache doesn't need pruning, it was never cached to begin with.
+    supabase
+      .from("contract_deletion_log")
+      .select("contract_id")
+      .order("created_at", { ascending: false })
+      .limit(500),
   ]);
 
   if (clientsRes.error) {
@@ -35,6 +48,11 @@ export async function getOfflineSnapshot() {
   if (contractsRes.error) {
     throw new Error(
       `Failed to snapshot contracts: ${contractsRes.error.message}`
+    );
+  }
+  if (deletionsRes.error) {
+    throw new Error(
+      `Failed to snapshot contract deletions: ${deletionsRes.error.message}`
     );
   }
 
@@ -88,6 +106,7 @@ export async function getOfflineSnapshot() {
   }
 
   return {
+    deletedContractIds: (deletionsRes.data ?? []).map((d) => d.contract_id),
     clients: (clientsRes.data ?? []).map((c) => {
       const maxOverdueMonths = maxOverdueByClient.get(c.id) ?? 0;
       return {

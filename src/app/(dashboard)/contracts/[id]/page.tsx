@@ -17,6 +17,7 @@ import { PendingPaymentsBanner } from "@/components/payments/pending-payments-ba
 import { DistributeProfitButton } from "@/components/contracts/distribute-profit-button";
 import { DistributionHistoryTable } from "@/components/contracts/distribution-history-table";
 import { InvestorPoolTable } from "@/components/contracts/investor-pool-table";
+import { DeleteContractButton } from "@/components/contracts/delete-contract-button";
 import {
   getContractById,
   getContractInvestorSnapshot,
@@ -49,6 +50,11 @@ export default async function ContractDetailPage({
   const paidCount = contract.installments.filter(
     (i) => i.status === "PAID"
   ).length;
+
+  const totalPaid = contract.payments.reduce(
+    (sum, p) => sum + Number(p.amountPaid),
+    0
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -91,6 +97,16 @@ export default async function ContractDetailPage({
               Edit
             </Link>
           </Button>
+
+          <DeleteContractButton
+            contractId={contract.id}
+            contractCode={contract.contractCode}
+            clientId={contract.client.id}
+            status={contract.status}
+            profitDistributed={contract.profitDistributed}
+            purchasePrice={contract.purchasePrice}
+            totalPaid={totalPaid}
+          />
         </div>
           {contract.status === "OVERDUE" && (
             <div className="px-6 pb-4">
