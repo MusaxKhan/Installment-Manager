@@ -9,6 +9,7 @@ import type {
   InvestorPhaseInvestmentRow,
   ProfitDistributionRow,
   ContractInvestorSnapshotRow,
+  BusinessExpenseRow,
   WithdrawalRow,
 } from "@/types/database";
 import type {
@@ -22,6 +23,7 @@ import type {
   InvestorPhaseInvestment,
   ProfitDistribution,
   ContractInvestorSnapshot,
+  BusinessExpense,
   Withdrawal,
 } from "@/types/domain";
 
@@ -178,6 +180,20 @@ export function mapContractInvestorSnapshot(
     investmentAmount: Number(row.investment_amount),
     percentOfPool: Number(row.percent_of_pool),
     createdAt: row.created_at,
+  };
+}
+
+export function mapBusinessExpense(row: BusinessExpenseRow): BusinessExpense {
+  return {
+    id: row.id,
+    title: row.title,
+    amount: Number(row.amount),
+    category: row.category,
+    expenseDate: row.expense_date,
+    notes: row.notes,
+    receiptReference: row.receipt_reference,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 

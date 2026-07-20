@@ -355,6 +355,56 @@ export default function GraphsPage() {
               )}
             </CardContent>
           </Card>
+          {/* Expense breakdown */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <PieChartIcon className="h-4 w-4 text-rose-600" />
+                Expense Breakdown
+              </CardTitle>
+              <CardDescription>
+                Contract product purchases plus every business expense category.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.expenseBreakdown.length === 0 ? (
+                <EmptyChartState message="No expenses recorded yet." />
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie
+                      data={data.expenseBreakdown}
+                      dataKey="amount"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={95}
+                      label={(props: { label?: string; percent?: number }) =>
+                        `${props.label}: ${((props.percent ?? 0) * 100).toFixed(0)}%`
+                      }
+                      labelLine={false}
+                    >
+                      {data.expenseBreakdown.map((entry, i) => (
+                        <Cell key={entry.label} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={formatTooltipPKR}
+                      contentStyle={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        color: "var(--popover-foreground)",
+                      }}
+                      labelStyle={{ color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--popover-foreground)" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

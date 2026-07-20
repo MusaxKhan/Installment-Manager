@@ -13,6 +13,7 @@ import {
   HandCoins,
   CheckCircle2,
   BarChart3,
+  Receipt,
 } from "lucide-react";
 import { StatCard } from "@/components/shared/stat-card";
 import { ContractStatusBadge } from "@/components/shared/status-badge";
@@ -135,6 +136,7 @@ export default async function DashboardPage() {
               <StatCard label="Completed Contracts" value={String(stats.totalCompletedContracts)} icon={CheckCircle2} variant="emerald" href="/contracts?status=COMPLETED" />
               <StatCard label="Cash in Hand" value={formatPKR(stats.cashInHand)} icon={Wallet} hint="Available for next purchases" variant="emerald" href="/cash-ledger" />
               <StatCard label="Outstanding Loans" value={formatPKR(stats.totalOutstandingLoans)} icon={HandCoins} hint="Borrowed, not yet repaid" variant="amber" href="/loans" />
+              <StatCard label="Total Expenses" value={formatPKR(stats.totalExpenses)} icon={Receipt} hint="Contract purchases + business expenses" variant="rose" href="/expenses" />
             </div>
           </div>
 

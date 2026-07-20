@@ -184,7 +184,8 @@ export type CashLedgerEntryRow = {
     | "payment_received"
     | "purchase"
     | "withdrawal"
-    | "loan_repayment";
+    | "loan_repayment"
+    | "business_expense";
   amount: number;
   contract_id: number | null;
   investor_id: number | null;
@@ -192,9 +193,33 @@ export type CashLedgerEntryRow = {
   loan_id: number | null;
   withdrawal_id: number | null;
   payment_id: number | null;
+  business_expense_id: number | null;
   description: string | null;
   entry_date: string;
   created_at: string;
+}
+
+export type BusinessExpenseCategory =
+  | "rent"
+  | "utilities"
+  | "salaries"
+  | "fuel_transport"
+  | "office_supplies"
+  | "maintenance_repair"
+  | "marketing"
+  | "taxes_fees"
+  | "other";
+
+export type BusinessExpenseRow = {
+  id: number;
+  title: string;
+  amount: number;
+  category: BusinessExpenseCategory;
+  expense_date: string;
+  notes: string | null;
+  receipt_reference: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type LoanRow = {
@@ -391,6 +416,12 @@ export interface Database {
           }
         ];
       };
+      business_expenses: {
+        Row: BusinessExpenseRow;
+        Insert: Partial<BusinessExpenseRow>;
+        Update: Partial<BusinessExpenseRow>;
+        Relationships: [];
+      };
       withdrawals: {
         Row: WithdrawalRow;
         Insert: Partial<WithdrawalRow>;
@@ -478,6 +509,17 @@ export interface Database {
       snapshot_contract_investors: {
         Args: { p_contract_id: number };
         Returns: void;
+      };
+      create_business_expense_with_balance_check: {
+        Args: {
+          p_title: string;
+          p_amount: number;
+          p_category: BusinessExpenseCategory;
+          p_expense_date: string;
+          p_notes: string | null;
+          p_receipt_reference: string | null;
+        };
+        Returns: BusinessExpenseRow[];
       };
       investor_available_balance: {
         Args: { p_investor_id: number };

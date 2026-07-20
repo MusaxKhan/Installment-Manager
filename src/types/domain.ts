@@ -9,6 +9,7 @@ import type {
   PaymentMethod,
   PhaseStatus,
   UserRole,
+  BusinessExpenseCategory,
 } from "./database";
 
 export type {
@@ -17,6 +18,7 @@ export type {
   PaymentMethod,
   PhaseStatus,
   UserRole,
+  BusinessExpenseCategory,
 };
 
 export interface Client {
@@ -151,6 +153,7 @@ export interface DashboardStats {
   cashInHand: number;
   totalOutstandingLoans: number;
   totalCompletedContracts: number;
+  totalExpenses: number;
 }
 
 // ── Search ──
@@ -251,6 +254,52 @@ export interface ContractInvestorSnapshot {
 export interface ContractInvestorSnapshotWithInvestor
   extends ContractInvestorSnapshot {
   investorName: string;
+}
+
+// ── Business Expenses (Phase 5) ──
+// Standalone costs not tied to any contract (rent, fuel, salaries,
+// etc.). Contract purchase costs are a separate, existing concept —
+// they're recorded automatically as a "purchase" cash_ledger entry
+// when a contract is created, and are only ever displayed here, never
+// created here.
+
+export const BUSINESS_EXPENSE_CATEGORY_LABELS: Record<
+  BusinessExpenseCategory,
+  string
+> = {
+  rent: "Rent",
+  utilities: "Utilities",
+  salaries: "Salaries",
+  fuel_transport: "Fuel & Transport",
+  office_supplies: "Office Supplies",
+  maintenance_repair: "Maintenance & Repair",
+  marketing: "Marketing",
+  taxes_fees: "Taxes & Fees",
+  other: "Other",
+};
+
+export interface BusinessExpense {
+  id: number;
+  title: string;
+  amount: number;
+  category: BusinessExpenseCategory;
+  expenseDate: string;
+  notes: string | null;
+  receiptReference: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A contract's purchase cost, shown read-only on the Expenses page. */
+export interface ContractPurchaseExpense {
+  contractId: number;
+  contractCode: string;
+  productName: string;
+  productDescription: string | null;
+  clientName: string;
+  purchasePrice: number;
+  purchaseDate: string;
+  status: ContractStatus;
 }
 
 // ── Withdrawals (Phase 2) ──

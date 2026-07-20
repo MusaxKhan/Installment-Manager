@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { round2 } from "@/lib/utils/calculations";
+import {
+  BUSINESS_EXPENSE_CATEGORY_LABELS,
+  type BusinessExpenseCategory,
+} from "@/types/domain";
 
 export class GraphsServiceError extends Error {}
 
@@ -36,6 +40,11 @@ export interface InvestorCapitalSlice {
   amount: number;
 }
 
+export interface ExpenseCategorySlice {
+  label: string;
+  amount: number;
+}
+
 export interface GraphsData {
   cashFlow: CashFlowPoint[];
   contractStatus: ContractStatusSlice[];
@@ -43,6 +52,7 @@ export interface GraphsData {
   profitComparison: ProfitComparisonPoint[];
   investorCapital: InvestorCapitalSlice[];
   cashInHandVsLoans: { label: string; value: number }[];
+  expenseBreakdown: ExpenseCategorySlice[];
 }
 
 function monthKey(dateStr: string): string {
@@ -76,6 +86,8 @@ export async function getGraphsData(): Promise<GraphsData> {
   let distributionsData: { profit_amount: number; investor: { name: string } | null }[];
   let loansData: { amount: number; amount_repaid: number }[];
   let activePhaseRes: { data: { id: number } | null; error: { message: string } | null };
+  let businessExpensesData: { category: BusinessExpenseCategory; amount: number }[];
+  let contractPurchaseTotalData: { purchase_price: number }[];
 
   try {
     // All six of these grow without bound over the business's lifetime
@@ -92,6 +104,8 @@ export async function getGraphsData(): Promise<GraphsData> {
       distributionsData,
       activePhaseRes,
       loansData,
+      businessExpensesData,
+      contractPurchaseTotalData,
     ] = await Promise.all([
       fetchAllRows((from, to) =>
         supabase
@@ -128,6 +142,12 @@ export async function getGraphsData(): Promise<GraphsData> {
         .maybeSingle(),
       fetchAllRows((from, to) =>
         supabase.from("loans").select("amount, amount_repaid").range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase.from("business_expenses").select("category, amount").range(from, to)
+      ),
+      fetchAllRows((from, to) =>
+        supabase.from("contracts").select("purchase_price").range(from, to)
       ),
     ]);
   } catch (err) {
@@ -259,6 +279,31 @@ export async function getGraphsData(): Promise<GraphsData> {
     { label: "Outstanding Loans", value: round2(totalOutstandingLoans) },
   ];
 
+  // ── Expense breakdown: each business expense category, plus contract
+  // purchases as one combined slice ──
+  const expenseCategoryTotals = new Map<BusinessExpenseCategory, number>();
+  for (const row of businessExpensesData) {
+    expenseCategoryTotals.set(
+      row.category,
+      round2((expenseCategoryTotals.get(row.category) ?? 0) + Number(row.amount))
+    );
+  }
+  const totalContractPurchases = round2(
+    contractPurchaseTotalData.reduce(
+      (sum, c) => sum + Number(c.purchase_price),
+      0
+    )
+  );
+  const expenseBreakdown: ExpenseCategorySlice[] = [
+    ...(totalContractPurchases > 0
+      ? [{ label: "Contract Purchases", amount: totalContractPurchases }]
+      : []),
+    ...Array.from(expenseCategoryTotals.entries()).map(([category, amount]) => ({
+      label: BUSINESS_EXPENSE_CATEGORY_LABELS[category],
+      amount,
+    })),
+  ];
+
   return {
     cashFlow,
     contractStatus,
@@ -266,5 +311,6 @@ export async function getGraphsData(): Promise<GraphsData> {
     profitComparison,
     investorCapital,
     cashInHandVsLoans,
+    expenseBreakdown,
   };
 }

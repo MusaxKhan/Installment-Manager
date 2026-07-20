@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { getCashInHand } from "./cash-ledger-service";
 import { getTotalOutstandingLoans } from "./loan-service";
+import { getTotalExpenses } from "./business-expense-service";
 import type { DashboardStats } from "@/types/domain";
 
 export class DashboardServiceError extends Error {}
@@ -21,6 +22,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     activePhaseRes,
     cashInHand,
     totalOutstandingLoans,
+    totalExpenses,
   ] = await Promise.all([
     supabase
       .from("contracts")
@@ -73,6 +75,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .maybeSingle(),
     getCashInHand(),
     getTotalOutstandingLoans(),
+    getTotalExpenses(),
   ]);
 
   const firstError = [
@@ -138,5 +141,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     cashInHand,
     totalOutstandingLoans,
     totalCompletedContracts: completedContractsRes.count ?? 0,
+    totalExpenses,
   };
 }

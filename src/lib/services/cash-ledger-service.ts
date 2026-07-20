@@ -10,7 +10,8 @@ export type CashLedgerEntryType =
   | "payment_received"
   | "purchase"
   | "withdrawal"
-  | "loan_repayment";
+  | "loan_repayment"
+  | "business_expense";
 
 export interface CashLedgerEntry {
   id: number;
@@ -22,6 +23,7 @@ export interface CashLedgerEntry {
   loanId: number | null;
   withdrawalId: number | null;
   paymentId: number | null;
+  businessExpenseId: number | null;
   description: string | null;
   entryDate: string;
   createdAt: string;
@@ -113,6 +115,7 @@ export async function listCashLedgerEntries(params?: {
     loanId: row.loan_id,
     withdrawalId: row.withdrawal_id,
     paymentId: row.payment_id,
+    businessExpenseId: row.business_expense_id,
     description: row.description,
     entryDate: row.entry_date,
     createdAt: row.created_at,

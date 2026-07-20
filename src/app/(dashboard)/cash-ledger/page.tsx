@@ -23,6 +23,7 @@ const ENTRY_LABELS: Record<CashLedgerEntryType, string> = {
   purchase: "Contract purchase",
   withdrawal: "Investor withdrawal",
   loan_repayment: "Loan repayment",
+  business_expense: "Business expense",
 };
 
 const CASH_IN_TYPES: CashLedgerEntryType[] = ["investment", "loan", "payment_received"];

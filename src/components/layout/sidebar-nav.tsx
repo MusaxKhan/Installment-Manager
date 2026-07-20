@@ -16,6 +16,7 @@ import {
   CloudOff,
   HandCoins,
   BarChart3,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/domain";
@@ -48,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/contracts", label: "Contracts", icon: FileText },
       { href: "/payments", label: "Payments", icon: Wallet },
       { href: "/loans", label: "Loans", icon: HandCoins },
+      { href: "/expenses", label: "Expenses", icon: Receipt },
       { href: "/cash-ledger", label: "Cash Ledger", icon: Coins },
     ],
   },
