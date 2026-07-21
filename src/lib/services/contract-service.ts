@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
-import { writeCashLedgerEntry } from "./cash-ledger-service";
+import { writeCashLedgerEntry, syncCashLedgerForContractEdit } from "./cash-ledger-service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ContractRow, Database } from "@/types/database";
 import {
@@ -148,6 +148,23 @@ export async function updateContractRecord(
       throw new ContractServiceError(
         `Failed to regenerate installment schedule: ${insertError.message}`
       );
+    }
+
+    // The purchase price (and the date it's recorded against) can
+    // change here since this whole branch only runs pre-payment —
+    // keep the cash_ledger "purchase" entry written at creation time
+    // in sync, or cash-in-hand quietly keeps reflecting the old price
+    // forever. See syncCashLedgerForContractEdit for why this updates
+    // the existing row in place rather than appending a delta.
+    if (
+      values.purchasePrice !== contract.purchasePrice ||
+      values.startDate !== contract.startDate
+    ) {
+      await syncCashLedgerForContractEdit(supabase, {
+        contractId,
+        newPurchasePrice: values.purchasePrice,
+        newStartDate: values.startDate,
+      });
     }
 
     return;

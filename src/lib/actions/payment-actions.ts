@@ -41,6 +41,13 @@ export async function recordPaymentAction(
   revalidatePath("/dashboard");
   revalidatePath("/payments");
   revalidatePath("/investors");
+  // recordPayment writes a payment_received cash_ledger entry, and can
+  // also trigger automatic profit distribution if the payment completes
+  // the contract (see recomputeContractStatus in contract-service.ts) —
+  // so this needs the same coverage as distributeProfitAction.
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
+  revalidatePath("/distributions");
   return {
     success: true,
     warning: distributionWarning ?? undefined,

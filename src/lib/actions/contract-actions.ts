@@ -57,6 +57,13 @@ export async function createContractAction(
 
   revalidatePath("/contracts");
   revalidatePath(`/clients/${parsed.data.clientId}`);
+  // createContractRecord writes a "purchase" cash_ledger entry, which
+  // dashboard/cash-ledger/graphs all read from — see the audit note in
+  // deleteContractAction below for why every action that moves cash
+  // needs to refresh these three.
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   redirect(`/contracts/${newContractId}`);
 }
 
@@ -114,6 +121,13 @@ export async function updateContractAction(
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath(`/contracts/${contractId}/edit`);
   revalidatePath(`/clients/${parsed.data.clientId}`);
+  // Only actually moves cash when purchasePrice/startDate changed
+  // (updateContractRecord syncs the ledger only in that case), but
+  // revalidating unconditionally is cheap and one fewer thing to get
+  // wrong later if that condition changes.
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
 
   redirect(`/contracts/${contractId}`);
 }
@@ -137,6 +151,7 @@ export async function deleteContractAction(
   revalidatePath("/dashboard");
   revalidatePath("/cash-ledger");
   revalidatePath("/graphs");
+  revalidatePath("/payments");
 
   return { success: true };
 }

@@ -39,5 +39,9 @@ export async function createWithdrawalAction(
   revalidatePath(`/investors/${investorId}`);
   revalidatePath("/investors");
   revalidatePath("/withdrawals");
+  // createWithdrawal writes a "withdrawal" cash_ledger entry.
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   return { success: true };
 }

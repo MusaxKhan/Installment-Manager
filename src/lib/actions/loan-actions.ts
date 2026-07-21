@@ -38,6 +38,8 @@ export async function createLoanAction(
 
   revalidatePath("/loans");
   revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   return { success: true };
 }
 
@@ -70,5 +72,7 @@ export async function recordLoanRepaymentAction(
 
   revalidatePath("/loans");
   revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   return { success: true };
 }

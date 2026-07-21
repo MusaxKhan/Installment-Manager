@@ -75,6 +75,61 @@ export async function writeCashLedgerEntry(
   }
 }
 
+/**
+ * Keeps a contract's "purchase" cash_ledger entry in sync when the
+ * contract's purchase price or start date is edited before any
+ * payments exist (see updateContractRecord in contract-service.ts —
+ * financial terms are frozen the moment a payment is recorded, so this
+ * only ever runs pre-payment).
+ *
+ * Mirrors syncCashLedgerForPaymentEdit's approach: update the existing
+ * linked row in place rather than appending a delta entry, since a
+ * contract has exactly one purchase entry by construction (written
+ * once, in createContractRecord, always with contractId set — there's
+ * no legacy-data case to fall back through here).
+ */
+export async function syncCashLedgerForContractEdit(
+  supabase: SupabaseClient<Database>,
+  params: {
+    contractId: number;
+    newPurchasePrice: number;
+    newStartDate: string;
+  }
+): Promise<void> {
+  const { contractId, newPurchasePrice, newStartDate } = params;
+
+  const { data: rows, error: findError } = await supabase
+    .from("cash_ledger")
+    .select("id")
+    .eq("contract_id", contractId)
+    .eq("entry_type", "purchase");
+
+  if (findError) {
+    throw new CashLedgerServiceError(
+      `Failed to look up the purchase cash ledger entry for contract #${contractId}: ${findError.message}`
+    );
+  }
+
+  if (!rows || rows.length !== 1) {
+    throw new CashLedgerServiceError(
+      rows && rows.length > 1
+        ? `Contract #${contractId} has ${rows.length} purchase cash ledger entries — refusing to guess which to update. Please reconcile cash_ledger manually.`
+        : `Contract #${contractId}'s purchase price was updated, but no matching cash ledger entry was found — cash-in-hand could not be synced. Please reconcile cash_ledger manually.`
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("cash_ledger")
+    .update({ amount: -newPurchasePrice, entry_date: newStartDate })
+    .eq("id", rows[0].id);
+
+  if (updateError) {
+    throw new CashLedgerServiceError(
+      `Contract #${contractId} was updated but its cash ledger entry could not be synced: ${updateError.message}`
+    );
+  }
+}
+
 export async function getCashInHand(): Promise<number> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("current_cash_in_hand");

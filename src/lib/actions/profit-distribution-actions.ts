@@ -23,5 +23,8 @@ export async function distributeProfitAction(
   revalidatePath("/investors");
   revalidatePath("/dashboard");
   revalidatePath("/distributions");
+  // profit_distributions feeds the "Profit Comparison by Investor"
+  // chart on the graphs page.
+  revalidatePath("/graphs");
   return { success: true };
 }

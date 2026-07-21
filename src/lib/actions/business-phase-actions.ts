@@ -93,6 +93,12 @@ export async function addInvestmentAction(
 
   revalidatePath(`/phases/${phaseId}`);
   revalidatePath("/investors");
+  // upsertInvestorPhaseInvestment writes an "investment" cash_ledger
+  // entry (or a delta entry on update) — same reasoning as the other
+  // cash-moving actions.
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   return { success: true };
 }
 
@@ -111,5 +117,8 @@ export async function removeInvestmentAction(
 
   revalidatePath(`/phases/${phaseId}`);
   revalidatePath("/investors");
+  revalidatePath("/dashboard");
+  revalidatePath("/cash-ledger");
+  revalidatePath("/graphs");
   return { success: true };
 }

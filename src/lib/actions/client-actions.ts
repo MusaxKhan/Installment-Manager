@@ -46,6 +46,7 @@ export async function createClientAction(
   }
 
   revalidatePath("/clients");
+  revalidatePath("/dashboard");
   redirect(`/clients/${newClientId}`);
 }
 
@@ -86,6 +87,7 @@ export async function deleteClientAction(id: number): Promise<ActionResult> {
   try {
     await softDeleteClient(id);
     revalidatePath("/clients");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (err) {
     if (err instanceof ClientServiceError) {

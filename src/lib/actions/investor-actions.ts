@@ -39,6 +39,8 @@ export async function createInvestorAction(
   }
 
   revalidatePath("/investors");
+  // Dashboard shows a count of active investors.
+  revalidatePath("/dashboard");
   redirect(`/investors/${newInvestorId}`);
 }
 
@@ -70,6 +72,9 @@ export async function updateInvestorAction(
 
   revalidatePath("/investors");
   revalidatePath(`/investors/${id}`);
+  // Editing can flip the "active" flag the dashboard's investor count
+  // is based on.
+  revalidatePath("/dashboard");
   redirect(`/investors/${id}`);
 }
 
@@ -84,5 +89,6 @@ export async function deleteInvestorAction(id: number): Promise<ActionResult> {
   }
 
   revalidatePath("/investors");
+  revalidatePath("/dashboard");
   return { success: true };
 }
